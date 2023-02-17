@@ -1,0 +1,19 @@
+.ui[class*="bottom attached"].buttons .button:first-child {
+    border-radius: 0 !important;
+}
+
+.ui[class*="bottom attached"].buttons .ui.label {
+    border-radius: 0 !important;
+}
+
+.ui.comments .comment .text {
+    margin: 0.25em 0;
+}
+
+.ui.comments .comment .text {
+    margin: 0.25em 0;
+}
+
+.ui.fluid.card>.content>a>span {
+    margin-left: 5px;
+}

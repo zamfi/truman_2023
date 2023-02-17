@@ -1,0 +1,71 @@
+.ui.form,
+.ui.form .fields,
+.ui.form h3 {
+    /* justify-content: center; */
+    text-align: center
+}
+
+.images {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.images .image {
+    width: 30%;
+    min-width: 200px;
+    height: auto;
+    position: relative;
+    cursor: pointer;
+    padding: 15px 5px;
+    margin: 10px;
+    background-color: white;
+    /* border: solid 0.75px;
+    border-color: gray; */
+    border-radius: 0.5em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.images .image h2 {
+    margin-top: 0px;
+}
+
+.images .image p {
+    font-size: medium;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+.images .image img {
+    width: 90%;
+    border-radius: 0.5em !important;
+    /* background-color: #b7c9c8; */
+    margin: 7%;
+}
+
+.images .image.green {
+    background-color: #fefefe !important;
+    border: solid 4px;
+    border-color: #2b905a;
+    border-radius: 0.5em;
+}
+
+i.icon.green {
+    float: right;
+}
+
+i.icon.green.hidden {
+    visibility: hidden;
+    float: left
+}
+
+.image i.icon.green.check {
+    position: absolute;
+    right: 2%;
+    bottom: 2%;
+    font-size: 1.71428571rem;
+}

@@ -1,0 +1,60 @@
+.computer.only.tablet.only.row 
+  .ui.borderless.fixed.menu
+    .ui.container
+      if user
+      a.item(href= user===undefined ? '/' : (user.consent ? "/": "#"))#headerHomeButton
+        img.ui.tiny.image(src='/public/logo.png', id='logo')
+      .right.menu
+        if !user
+          a.item(href='/login') Log In
+          a.item(href='/signup') Create Account
+        else
+          if user.consent
+            if(showNewPostIcon)
+              a.item.newpost
+                i.big.write.square.icon
+            a.item(href='/notifications') 
+              i.big.alarm.icon
+          .ui.simple.dropdown.item
+            if user.profile.picture
+              img.ui.mini.spaced.circular.image(src='/user_post/'+user.profile.picture)
+            else
+              img.ui.mini.spaced.circular.image(src=user.gravatar(60))
+            |
+            span(style="margin-right: 5px;")= user.profile.name || user.username || user.id
+            i.dropdown.icon
+            .left.menu
+              if user.consent
+                a.item(href='/me') My Profile
+                a.item(href='/account') Account Settings
+                a.item(href='/com?feed=true') View Community Rules
+              a.item(href='/logout') Log Out
+.mobile.only.row
+  .ui.fluid.top.fixed.four.item.menu
+    a.item(href=user===undefined ? '/' : (user.consent ? "/": "#"))#headerHomeButton
+      img.ui.tiny.image(src='/public/logo.png', id='cell_logo')
+    if !user
+      a.item(href='/login') Log In
+      a.item(href='/signup') Create Account
+    else
+      if user.consent
+        if(showNewPostIcon)
+          a.item.newpost
+            i.big.write.square.icon
+        a.item(href='/notifications') 
+          i.big.alarm.icon
+      else 
+        .item 
+        .item
+      .ui.simple.dropdown.item
+        if user.profile.picture
+          img.ui.mini.spaced.circular.image(src='/user_post/'+user.profile.picture)
+        else
+          img.ui.mini.spaced.circular.image(src=user.gravatar(60))
+        i.dropdown.icon
+        .left.menu
+          if user.consent
+            a.item(href='/me') My Profile
+            a.item(href='/account') Account Settings
+            a.item(href='/com?feed=true') View Community Rules
+          a.item(href='/logout') Log Out

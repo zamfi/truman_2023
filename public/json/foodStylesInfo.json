@@ -1,0 +1,22 @@
+{
+    "American": {
+        "Description": "burger, mashed potatoes, mac & cheese, chicken wings, hot dogs",
+        "Photo": "/public/style_american.jpg"
+    },
+    "Asian": {
+        "Description": "sushi, kimchi, dim sum, pho, biryani, tandoori",
+        "Photo": "/public/style_asian_3.jpg"
+    },
+    "Cajun": {
+        "Description": "jambalaya, gumbo, crawfish, boudin, po'boy, shrimp creole",
+        "Photo": "/public/style_cajun_2.jpg"
+    },
+    "Italian": {
+        "Description": "pizza, pasta, arancini, lasagna, ossobuco, risotto",
+        "Photo": "/public/style_italian_2.jpg"
+    },
+    "Mexican": {
+        "Description": "chilaquiles, guacamoles, enchiladas, tacos, burritos, molletes",
+        "Photo": "/public/style_mexican_3.jpg"
+    }
+}

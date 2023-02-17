@@ -1,0 +1,44 @@
+-var cdn = "https://dhpd030vnpk29.cloudfront.net";
+doctype html
+html
+  head
+    meta(charset='utf-8')
+    meta(http-equiv='X-UA-Compatible', content='IE=edge')
+    meta(name='viewport', content='width=device-width, initial-scale=1.0')
+    meta(name='theme-color' content='#4DA5F4')
+    meta(name='csrf-token', content=_csrf)
+    meta(name="HandheldFriendly" content="True")
+    meta(name="apple-mobile-web-app-capable" content="yes")
+    meta(name="mobile-web-app-capable" content="yes")
+    meta(name="msapplication-tap-highlight" content="no")
+    meta(name="content-language" content="en_US")
+    title #{title} - eatsnap.love
+    link(rel='shortcut icon', href='/public/favicon.ico')
+    link(rel='manifest', href='/public/manifest.json')
+    link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.min.css')
+    link(type='text/css', rel='stylesheet', href='/public/css/ui_layout.css')
+    block styles
+      
+  script.
+    if ('serviceWorker' in navigator) {
+    console.log("Will the service worker register?");
+    navigator.serviceWorker.register('/public/service-worker.js')
+    .then(function(reg){
+    console.log("Yes, it did.");
+    }).catch(function(err) {
+    console.log("No it didn't. This happened: ", err)
+    });
+    }
+  script(src=cdn+'/js/lib/jquery-3.1.1.min.js')
+  script(src=cdn+'/js/lib/humanized_time_span.js')
+  script(src=cdn+'/js/lib/lazyload.transpiled.min.js')
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js', integrity='sha256-t8GepnyPmw9t+foMh3mKNvcorqNHamSKtKRxxpUEgFI=', crossorigin='anonymous')
+  script(src='/public/js/main.js')
+  block scripts
+
+  body
+    .ui.vertically.padded.grid.container#pagegrid(style="justify-content: center;")
+      include partials/ui_header
+      .ui.grid.container#pagecontainer
+        include partials/ui_flash
+        block content

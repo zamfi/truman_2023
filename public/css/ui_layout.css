@@ -1,0 +1,77 @@
+body {
+    background-color: #F5F8FA;
+    padding: 0em;
+}
+
+.hidden {
+    display: none;
+}
+
+.ui.menu .item img.logo {
+    margin-left: 3.5em;
+}
+
+.ui.menu .item>i.icon {
+    margin: 0 !important;
+}
+
+a {
+    cursor: pointer;
+}
+
+button {
+    cursor: pointer;
+}
+
+.ui.button {
+    cursor: pointer;
+}
+
+#newpost.ui.fluid.left.labeled.right.icon.input {
+    cursor: pointer;
+}
+
+.main.container {
+    margin-top: 5em;
+}
+
+.ui.fluid.card>.content>.description {
+    font-size: 1.05em;
+}
+
+.wireframe {
+    margin-top: 2em;
+}
+
+
+/* Image Upload*/
+
+.image-upload>input {
+    display: none;
+}
+
+.image-upload img {
+    cursor: pointer;
+}
+
+.ui.three.column.grid.pro {
+    margin: 0;
+}
+
+.ui.three.column.grid.pro .column {
+    padding: 0 4px;
+}
+
+.ui.three.column.grid.pro .column img {
+    margin-top: 8px;
+    vertical-align: middle;
+}
+
+#pagecontainer {
+    padding-top: 50px;
+    justify-content: center;
+}
+
+#pagegrid {
+    justify-content: center;
+}
