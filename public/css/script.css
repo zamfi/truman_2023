@@ -1,3 +1,5 @@
+/*CSS for Posts*/
+
 .ui[class*="bottom attached"].buttons .button:first-child {
     border-radius: 0 !important;
 }
@@ -16,4 +18,56 @@
 
 .ui.fluid.card>.content>a>span {
     margin-left: 5px;
+}
+
+.ui.comments .comment:first-child {
+    padding-top: 0.5em !important;
+}
+
+.ui.label>img {
+    width: 2.1666em!important;
+}
+
+
+/*CSS for Ads*/
+
+.ui.fluid.card.dim.adPost {
+    margin-bottom: 2em;
+    background-color: #F5F5F5;
+}
+
+.suggestedHeader {
+    font-weight: bold;
+    margin-bottom: 1em;
+}
+
+.suggestedHeader i.close.icon {
+    float: right;
+    cursor: pointer
+}
+
+
+/*CSS for adding new comment*/
+
+.extra.content>.ui.fluid.left.labeled.right.icon.input>.ui.form {
+    width: 100%;
+}
+
+textarea.newcomment {
+    border-radius: 0 .28571429rem .28571429rem 0;
+}
+
+.extra.content>.ui.fluid.left.labeled.right.icon.input>.ui.label {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5em;
+}
+
+.extra.content>.ui.fluid.left.labeled.right.icon.input>.ui.label>img {
+    margin: 0;
+}
+
+.extra.content>.ui.fluid.left.labeled.right.icon.input>i.big.send.link.icon {
+    margin-right: 4px;
 }

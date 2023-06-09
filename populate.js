@@ -132,7 +132,8 @@ async function doPopulate() {
                             location: actor_raw.location,
                             bio: actor_raw.bio,
                             picture: actor_raw.picture
-                        }
+                        },
+                        class: actor_raw.class
                     };
 
                     var actor = new Actor(actordetail);
@@ -179,7 +180,7 @@ async function doPopulate() {
                                 picture: new_post.picture,
                                 likes: getLikes(),
                                 actor: act,
-                                time: timeStringToNum(new_post.time),
+                                time: timeStringToNum(new_post.time) || null,
                                 class: new_post.class
                             }
 
@@ -386,7 +387,7 @@ String.prototype.capitalize = function() {
 
 //Transforms a time like -12:32 (minus 12 hours and 32 minutes) into a time in milliseconds
 //Positive numbers indicate future posts (after they joined), Negative numbers indicate past posts (before they joined)
-//Format: (+/-)HH:SS
+//Format: (+/-)HH:MM
 function timeStringToNum(v) {
     var timeParts = v.split(":");
     if (timeParts[0] == "-0")

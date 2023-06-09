@@ -1,9 +1,6 @@
 extends ui_layout
   
 block content
-
-  
-  
   .computer.only.tablet.only.four.wide.column 
     .ui.card
       .image
@@ -15,221 +12,190 @@ block content
         a.header(href='/me')= user.profile.name || user.username || user.id
         .meta="@"+user.username
         .description=user.profile.bio
-        .description
-          if user.profile.location
+        if user.profile.location
+          .description(style="margin-top: 5px;")
             i.marker.icon
             span=user.profile.location
       .one.ui.bottom.attached.icon.buttons
-          button.ui.editprofile.button(data-tooltip='Update Your Profile', data-position='bottom left')
-            i.write.icon
+        button.ui.editprofile.button(data-tooltip='Update My Profile', data-position='bottom left')
+          i.write.icon
 
-  .eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
-    if notification_feed == -1
-      h4 You have no notifications at the time.
+  #loading.ten.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.ten.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;')
+    if notification_feed.length ==0
+      .ui.fluid.card
+        .content
+          .description
+          |  You have no notifications at this time.
     else
-      .ui.feed
-        each val in notification_feed
-          case val.action
-            when 'read'
-              - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.unhide.icon
-                .content
-                  img.ui.tiny.right.floated.image(src='/user_post/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      if actor.username != "generic-joe"
-                        a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                          //-img(src='/profile_pictures/'+actor.profile.picture)
-                          
+      h3 Notifications (!{count})
+      each notification in notification_feed
+        .ui.raised.segment(correspondingPost=notification.postID, class = !notification.unreadNotification ? "read": "")
+          .ui.feed
+            case notification.action
+              when 'read'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.unhide.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        if actor.username != "generic-joe"
+                          a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
+                            //-img(src='/profile_pictures/'+actor.profile.picture)
+                            
+                            img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
+                    if best.length == 1
+                      .summary
+                        a(href='/user/'+best[0].username)=best[0].profile.name
+                        |   has read your post. 
+                        .date=notification.time
+                    else 
+                      .summary
+                        a(href='/user/'+best[0].username)=best[0].profile.name
+                        |  and 
+                        //-a.others(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have read your post.  
+                        .date=notification.time
+                .ui.small.long.extrausers.modal(id=notification.key)
+                  .image.centered.content
+                    .ui.extra.centered.divided.items
+                      each extra in notification.actors
+                        .item
+                          a.ui.tiny.image(href='/user/'+extra.username)
+                            img(src='/avatar-icon.svg', data-original=extra.profile.picture)
+                          .middle.aligned.content
+                            .header
+                              a(href='/user/'+extra.username)=extra.profile.name
+              when 'like'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.like.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='bottom center')                       
                           img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
                     .summary
                       a(href='/user/'+best[0].username)=best[0].profile.name
-                      |   has read your post. 
-                      .date=val.time
-                  else 
+                      if best.length != 1
+                        |  and 
+                        a.others(key=notification.key)=(best.length+notification.actors.length-1)+" others"
+                        |  have
+                      else 
+                        |  has
+                      |  liked your post. 
+                      .date=notification.time
+              when 'reply'
+                .event
+                  .label
+                    i.large.reply.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                        a.ui.avatar.image(href='/user/'+notification.actor.username, data-tooltip=notification.actor.profile.name, data-position='bottom center')                       
+                          img.ui.avatar.image(src='/profile_pictures/'+notification.actor.profile.picture)
+                    .summary
+                      a(href='/user/'+notification.actor.username)
+                        span=notification.actor.profile.name
+                      |  has commented on your post.
+                      .date=notification.time
+                    .extra.text=notification.replyBody
+              when 'reply_read'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.unhide.icon
+                  .content
+                    if notification.picture
+                      //- img.ui.tiny.right.floated.image(src='/post_pictures/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        if actor.username != "generic-joe"
+                          a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')                            
+                            img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
                     .summary
                       a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      //-a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      a(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have read your post.  
-                      .date=val.time
-              .ui.small.long.extrausers.modal(id=val.key)
-                .image.centered.content
-                  .ui.extra.centered.divided.items
-                    each extra in val.actors
-                      .item
-                        a.ui.tiny.image(href='/user/'+extra.username)
-                          img(src='/avatar-icon.svg', data-original=extra.profile.picture)
-                        .middle.aligned.content
-                          .header
-                            a(href='/user/'+extra.username)=extra.profile.name
-            when 'like'
-             - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.like.icon
-                .content
-                  img.ui.tiny.right.floated.image(src='/user_post/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                        //-img(src='/profile_pictures/'+actor.profile.picture)
-                        
-                        img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |   has liked your post. 
-                      .date=val.time
-                  else 
-                    .summary 
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have liked your post. 
-                      .date=val.time  
-            when 'reply_read'
-              - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.unhide.icon
-                .content
-                  if val.picture
-                    img.ui.tiny.right.floated.image(src='/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      if actor.username != "generic-joe"
+                      if best.length == 1
+                        |  has 
+                      else 
+                        |  and 
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have 
+                      | read your reply to #{notification.originalActor.profile.name}'s post:
+                      .date=notification.time
+                    .extra.text=notification.body
+              when 'reply_like'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.like.icon
+                  .content
+                    if notification.picture
+                      //- img.ui.tiny.right.floated.image(src='/post_pictures/'+notification.picture)
+                    .extra.images
+                      each actor in best
                         a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                          //-img(src='/profile_pictures/'+actor.profile.picture)
-                          
                           img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
                     .summary
                       a(href='/user/'+best[0].username)=best[0].profile.name
-                      | has read your reply to #{val.originalActor.profile.name}'s post. 
-                      .date=val.time
-                  else 
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      //-a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      a(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have read your reply to #{val.originalActor.profile.name}'s post.  
-                      .date=val.time
-              .ui.small.long.extrausers.modal(id=val.key)
-                .image.centered.content
-                  .ui.extra.centered.divided.items
-                    each extra in val.actors
-                      .item
-                        a.ui.tiny.image(href='/user/'+extra.username)
-                          img(src='/avatar-icon.svg', data-original=extra.profile.picture)
-                        .middle.aligned.content
-                          .header
-                            a(href='/user/'+extra.username)=extra.profile.name
-            when 'reply_like'
-             - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.like.icon
-                .content
-                  if val.picture
-                    img.ui.tiny.right.floated.image(src='/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                        //-img(src='/profile_pictures/'+actor.profile.picture)
-                        img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |   has liked your reply to #{val.originalActor.profile.name}'s post. 
-                      .date=val.time
-                  else 
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have liked your reply to #{val.originalActor.profile.name}'s post. 
-                      .date=val.time                                              
-            when 'actor_reply_read'
-              - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.unhide.icon
-                .content
-                  img.ui.tiny.right.floated.image(src='/user_post/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      if actor.username != "generic-joe"
-                        a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                          //-img(src='/profile_pictures/'+actor.profile.picture)
-                          img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      | has read #{val.originalActor.profile.name}'s reply to your post. 
-                      .date=val.time
-                  else 
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have read #{val.originalActor.profile.name}'s reply to your post.
-                      .date=val.time
-              .ui.small.long.extrausers.modal(id=val.key)
-                .image.centered.content
-                  .ui.extra.centered.divided.items
-                    each extra in val.actors
-                      .item
-                        a.ui.tiny.image(href='/user/'+extra.username)
-                          img(src='/avatar-icon.svg', data-original=extra.profile.picture)
-                        .middle.aligned.content
-                          .header
-                            a(href='/user/'+extra.username)=extra.profile.name
-            when 'actor_reply_like'
-             - var best = val.actors.splice(0, 5);
-              .event
-                .label
-                  i.large.like.icon
-                .content
-                  img.ui.tiny.right.floated.image(src='/user_post/'+val.picture)
-                  .extra.images
-                    each actor in best
-                      a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
-                        //-img(src='/profile_pictures/'+actor.profile.picture)
-                        
-                        img.ui.avatar.image(src='/profile_pictures/'+actor.profile.picture)
-                  if best.length == 1
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |   has liked #{val.originalActor.profile.name}'s reply to your post. 
-                      .date=val.time
-                  else 
-                    .summary
-                      a(href='/user/'+best[0].username)=best[0].profile.name
-                      |  and 
-                      a.others(key=val.key)=(best.length+val.actors.length-1)+" others "
-                      | have liked #{val.originalActor.profile.name}'s reply to your post. 
-                      .date=val.time   
-            when 'reply'
-              .event
-                .label
-                  i.large.reply.icon
-                .content
-                  img.ui.tiny.right.floated.image(src='/user_post/'+val.picture)
-                  .extra.images
-                      a.ui.avatar.image(href='/user/'+val.actor.username, data-tooltip=val.actor.profile.name, data-position='top center')
-                        //-img(src='/profile_pictures/'+val.actor.profile.picture)
-                        
-                        img.ui.avatar.image(src='/profile_pictures/'+val.actor.profile.picture)
-                  .summary
-                    a(href='/user/'+val.actor.username)
-                      span=val.actor.profile.name
-                    |  has commented on your post.
-                  .extra.text=val.replyBody
-                  
-            //-default
+                      if best.length == 1
+                        |  has 
+                      else 
+                        |  and 
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have 
+                      | liked your reply to #{notification.originalActor.profile.name}'s post:
+                      .date=notification.time
+                    .extra.text=notification.body                                                
+              
+    each val in user_posts      
+      .ui.tiny.long.modal(correspondingPost=val.postID)
+        .ui.segment
+          include ./partials/userPost
+          .actions
+            .ui.positive.button Back
+    each val in actor_posts      
+      .ui.tiny.long.modal(correspondingPost=val._id)
+        .ui.segment
+          include ./partials/actorPost
+          .actions
+            .ui.positive.button Back
+  .computer.only.tablet.only.two.wide.column 
+
+block scripts 
+  script.
+    var numComments = !{JSON.stringify(user.numComments)};
+  script(src='/public/js/notification.js')
+  script(src='/public/js/postFunctionalities.js')
+
+block styles
+  style. 
+    .ui.raised.segment {
+      padding: 1em 2em !important;
+      cursor: pointer;
+    }
+    .ui.raised.segment.read{
+      background: #eff0f0;
+    }
+    .event .extra.images {
+      margin: 0 !important;
+    }
+    .event .summary {
+      margin: .5em 0 0 !important;
+    }
+    .event .extra.text {
+      margin: 0 !important;
+    }
+    .event .ui.tiny.right.floated.image {
+      margin: 0 !important;
+      height: 50px;
+      width: auto;
+    }
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')

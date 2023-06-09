@@ -10,6 +10,7 @@ const actorSchema = new mongoose.Schema({
         bio: String,
         picture: String
     },
+    class: String
 }, { timestamps: true });
 
 const Actor = mongoose.model('Actor', actorSchema);

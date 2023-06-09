@@ -22,16 +22,8 @@ var schedule = require('node-schedule');
 const fs = require('fs');
 const util = require('util');
 fs.readFileAsync = util.promisify(fs.readFile);
-
 const multer = require('multer');
-
-var m_options = multer.diskStorage({
-    destination: path.join(__dirname, 'uploads'),
-    filename: function(req, file, cb) {
-        var prefix = req.user.id + Math.random().toString(36).slice(2, 10);
-        cb(null, prefix + file.originalname.replace(/[^A-Z0-9]+/ig, "_"));
-    }
-});
+var schedule = require('node-schedule');
 
 var userpost_options = multer.diskStorage({
     destination: path.join(__dirname, 'uploads/user_post'),
@@ -41,7 +33,6 @@ var userpost_options = multer.diskStorage({
         cb(null, prefix + file.originalname.replace(/[^A-Z0-9]+/ig, "_"));
     }
 });
-
 var useravatar_options = multer.diskStorage({
     destination: path.join(__dirname, 'uploads/user_post'),
     filename: function(req, file, cb) {
@@ -50,11 +41,8 @@ var useravatar_options = multer.diskStorage({
     }
 });
 
-//const upload = multer({ dest: path.join(__dirname, 'uploads') });
-const upload = multer({ storage: m_options });
 const userpostupload = multer({ storage: userpost_options });
 const useravatarupload = multer({ storage: useravatar_options });
-
 
 /**
  * Load environment variables from .env file, where API keys and passwords are configured.
@@ -94,68 +82,32 @@ mongoose.connection.on('error', (err) => {
     process.exit();
 });
 
-//userController.mailAllActiveUsers()
 /****
  **CRON JOBS
- ** Mailing Users
- */
-var rule = new schedule.RecurrenceRule();
-rule.hour = 4;
-rule.minute = 55;
-
-var j = schedule.scheduleJob(rule, function() {
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
-    console.log('@@@@@@######@@@@@@@@Sending Mail to All ACTIVE USERS!!!!!');
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
-    userController.mailAllActiveUsers();
-});
-
-
-/****
- **CRON JOBS
- **Check if users are still active 12 and 20
+ **Check if users are still active every 8 hours (at 4:30am, 12:30pm, and 20:30pm)
  */
 var rule1 = new schedule.RecurrenceRule();
 rule1.hour = 4;
 rule1.minute = 30;
-
 var j = schedule.scheduleJob(rule1, function() {
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
-    console.log('@@@@@@######@@@@@@@@Checking if Users are active!!!!!');
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
     userController.stillActive();
 });
 
-/****
- **CRON JOBS
- **Check if users are still active 12 and 20
- */
 var rule2 = new schedule.RecurrenceRule();
 rule2.hour = 12;
 rule2.minute = 30;
 
 var j2 = schedule.scheduleJob(rule2, function() {
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
-    console.log('@@@@@@######@@@@@@@@2222 Checking if Users are active 2222!!!!!');
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
     userController.stillActive();
 });
 
-/****
- **CRON JOBS
- **Check if users are still active 12 and 20
- */
 var rule3 = new schedule.RecurrenceRule();
 rule3.hour = 20;
 rule3.minute = 30;
 
 var j3 = schedule.scheduleJob(rule3, function() {
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
-    console.log('@@@@@@######@@@@@@@@3333 Checking if Users are active 3333!!!!!');
-    console.log('@@@@@@######@@@@@@@@#########@@@@@@@@@@@@########');
     userController.stillActive();
 });
-
 
 /**
  * Express configuration.
@@ -178,7 +130,7 @@ app.use(session({
         path: '/',
         httpOnly: true,
         secure: false,
-        maxAge: 7200000
+        maxAge: 7200000 //2 hours
     },
     secret: process.env.SESSION_SECRET,
     store: new MongoStore({
@@ -194,8 +146,8 @@ app.use(flash());
 //this allows us to not check CSRF when uploading an image. Its a weird issue that
 //multer and lusca no not play well together
 app.use((req, res, next) => {
-    if ((req.path === '/api/upload') || (req.path === '/post/new') || (req.path === '/account/profile') || (req.path === '/account/signup_info_post')) {
-        console.log("Not checking CSRF - out path now");
+    if ((req.path === '/post/new') || (req.path === '/account/profile') || (req.path === '/account/signup_info_post')) {
+        console.log("Not checking CSRF. Out path now");
         next();
     } else {
         lusca.csrf()(req, res, next);
@@ -219,20 +171,15 @@ app.use((req, res, next) => {
         req.path !== '/login' &&
         req.path !== '/signup' &&
         req.path !== '/bell' &&
+        req.path !== '/pageLog' &&
         !req.path.match(/^\/auth/) &&
         !req.path.match(/\./)) {
-        console.log(req.path);
-        req.session.returnTo = req.path;
-    } else if (req.user &&
-        req.path == '/account') {
-        console.log(req.path);
         req.session.returnTo = req.path;
     }
     next();
 });
 
 var csrf = lusca({ csrf: true });
-
 
 app.use('/public', express.static(path.join(__dirname, 'public'), { maxAge: 31557600000 }));
 app.use('/semantic', express.static(path.join(__dirname, 'semantic'), { maxAge: 31557600000 }));
@@ -246,10 +193,11 @@ app.use('/profile_pictures', express.static(path.join(__dirname, 'profile_pictur
 app.get('/', passportConfig.isAuthenticated, scriptController.getScript);
 
 app.post('/post/new', userpostupload.single('picinput'), csrf, scriptController.newPost);
+app.post('/pageLog', passportConfig.isAuthenticated, userController.postPageLog);
+app.post('/pageTimes', passportConfig.isAuthenticated, userController.postPageTime);
 
 app.get('/com', function(req, res) {
-    //Are we accessing the community rules from the feed?
-    const feed = req.query.feed === "true" ? true : false;
+    const feed = req.query.feed == "true" ? true : false; //Are we accessing the community rules from the feed?
     res.render('com', {
         title: 'Community Rules',
         feed
@@ -268,12 +216,6 @@ app.get('/tos', function(req, res) {
     });
 });
 
-// app.get('/profile_info', passportConfig.isAuthenticated, function(req, res) {
-//     res.render('profile_info', {
-//         title: 'Profile Introductions'
-//     });
-// });
-
 app.get('/completed', passportConfig.isAuthenticated, userController.userTestResults);
 
 app.get('/notifications', passportConfig.isAuthenticated, notificationController.getNotifications);
@@ -282,9 +224,6 @@ app.get('/login', userController.getLogin);
 app.post('/login', userController.postLogin);
 app.get('/logout', userController.logout);
 app.get('/forgot', userController.getForgot);
-app.post('/forgot', userController.postForgot);
-app.get('/reset/:token', userController.getReset);
-app.post('/reset/:token', userController.postReset);
 app.get('/signup', userController.getSignup);
 app.post('/signup', userController.postSignup);
 
@@ -297,33 +236,20 @@ app.get('/account/signup_info', passportConfig.isAuthenticated, function(req, re
     });
 });
 app.post('/account/signup_info_post', passportConfig.isAuthenticated, useravatarupload.single('picinput'), csrf, userController.postSignupInfo);
-app.get('/account/interest', passportConfig.isAuthenticated, async function(req, res) {
-    const data = await fs.readFileAsync(`${__dirname}/public/json/foodStylesInfo.json`)
-    const foodStyleData = JSON.parse(data.toString());
-
-    res.render('account/interest', {
-        title: 'Choose your Interest',
-        foodStyleData
-    });
-});
-app.post('/account/interest', passportConfig.isAuthenticated, userController.postInterestInfo)
 
 app.get('/me', passportConfig.isAuthenticated, userController.getMe);
 app.get('/user/:userId', passportConfig.isAuthenticated, actorsController.getActor);
-app.post('/user', passportConfig.isAuthenticated, actorsController.postBlockOrReport);
+app.post('/user', passportConfig.isAuthenticated, actorsController.postBlockReportOrFollow);
+app.get('/actors', passportConfig.isAuthenticated, actorsController.getActors)
 
-app.get('/bell', passportConfig.isAuthenticated, userController.checkBell);
-
-//getScript
 app.get('/feed', passportConfig.isAuthenticated, scriptController.getScript);
 app.post('/feed', passportConfig.isAuthenticated, scriptController.postUpdateFeedAction);
-app.post('/pro_feed', passportConfig.isAuthenticated, scriptController.postUpdateProFeedAction);
 app.post('/userPost_feed', passportConfig.isAuthenticated, scriptController.postUpdateUserPostFeedAction);
 app.get('/test', passportConfig.isAuthenticated, function(req, res) {
     res.render('test', {
         title: 'Test'
     })
-})
+});
 
 /**
  * Error Handler.
@@ -355,5 +281,4 @@ app.listen(app.get('port'), () => {
     console.log('%s App is running at http://localhost:%d in %s mode', chalk.green('✓'), app.get('port'), app.get('env')); 
     console.log('  Press CTRL-C to stop\n');
 });
-
 module.exports = app;

@@ -1,740 +1,1296 @@
-#! /usr/bin/env node
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' });
 
-console.log('This data export is running!!!!');
-
-
-const async = require('async')
-const Actor = require('./models/Actor.js');
 const Script = require('./models/Script.js');
 const User = require('./models/User.js');
-const _ = require('lodash');
-const dotenv = require('dotenv');
+const Actor = require('./models/Actor.js');
+
 const mongoose = require('mongoose');
-const fs = require('fs')
-var UAParser = require('ua-parser-js');
-const util = require('util');
-
-
-
-var csvWriter = require('csv-write-stream');
-var mlm_writer = csvWriter();
-var s_writer = csvWriter();
-var summary_writer = csvWriter();
-//5bb3a93ad9fd14471bf3977d
-//5bb3a93ad9fd14471bf39791
-//5bb3a93ad9fd14471bf39792
-//5bb3a93ad9fd14471bf397c8
-/*var bully_messages = ["5bb3a93ad9fd14471bf3977d",
-"5bb3a93ad9fd14471bf39791",
-"5bb3a93ad9fd14471bf39792",
-"5bb3a93ad9fd14471bf397c8"];*/
-var bully_stats = [];
-var sur_array = [];
-
-//postIDs for the posts and comments we have interest in
-//UPDATE THESE WHENEVER NODE POPULATE IS RUN.
-day1Flagged = "5db98c32ed2b9b5a43880b2b"; //chicken parm, you guys!
-day1FlaggedCommentUnambig = "5db98c36ed2b9b5a438817bb"; //is she pregnant?
-day1FlaggedCommentAmbig = "5db98c36ed2b9b5a438817bc"; //ummmm imma pass
-day1NotFlagged = "5db98c32ed2b9b5a43880a60"; //i had this pizza yesterday
-day1NotFlaggedComment = "5db98c37ed2b9b5a438817bd"; //when will you get it into your head
-
-day2Flagged = "5db98c32ed2b9b5a43880b0d"; //here's my attempt at bruschetta
-day2FlaggedCommentUnambig = "5db98c37ed2b9b5a438817be"; //this photo is uglier than you
-day2FlaggedCommentAmbig = "5db98c38ed2b9b5a438818d7"; //plzzz don't ever cook this for me
-day2NotFlagged = "5db98c32ed2b9b5a43880a9a"; //AFTERNOON SNACKTIME !!!
-day2NotFlaggedComment = "5db98c38ed2b9b5a438818d8"; //Everyone hates you
-
-otherComment229 = "5db98c37ed2b9b5a43881863"; //dinner of champions!
-otherComment263 = "5db98c37ed2b9b5a43881881"; //so pretty!
-otherComment150 = "5db98c37ed2b9b5a43881818"; // first try!
-otherComment310 = "5db98c37ed2b9b5a438818a6"; //nice!
-//end custom ids
-
-
-Array.prototype.sum = function() {
-    return this.reduce(function(a,b){return a+b;});
-};
-
-
-
-var mlm_array = [];
-
-//dotenv.load({ path: '.env' });
-dotenv.config({path: '.env'});
-
-/*
-var MongoClient = require('mongodb').MongoClient
- , assert = require('assert');
-
-
-//var connection = mongo.connect('mongodb://127.0.0.1/test');
-mongoose.connect(process.env.PRO_MONGODB_URI || process.env.PRO_MONGOLAB_URI);
-var db = mongoose.connection;
-mongoose.connection.on('error', (err) => {
-  console.error(err);
-  console.log('%s MongoDB connection error. Please make sure MongoDB is running.', chalk.red('✗'));
-  process.exit();
-}); */
-
-/**
- * Connect to MongoDB.
- */
-mongoose.Promise = global.Promise;
-
-//mongoose.connect(process.env.MONGODB_URI || process.env.MONGOLAB_URI);
-//mongoose.connect(process.env.MONGOLAB_TEST || process.env.PRO_MONGOLAB_URI, { useMongoClient: true });
-mongoose.connect(process.env.MONGODB_URI || process.env.MONGOLAB_URI, { useNewUrlParser: true });
-mongoose.connection.on('error', (err) => {
-  console.log('%s MongoDB connection error. Please make sure MongoDB is running.', chalk.red('✗'));
-  console.error(err);
-  process.exit();
+mongoose.connect(process.env.PRO_MONGODB_URI, { useNewUrlParser: true });
+// listen for errors after establishing initial connection
+db = mongoose.connection;
+db.on('error', (err) => {
+    console.error(err);
+    console.log(color_error, '%s MongoDB connection error.');
+    process.exit(1);
 });
 
+const fs = require('fs');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-User.find()
-  .where('active').equals(false)
-  .populate({
-         path: 'feedAction.post',
-         model: 'Script',
-         populate: {
-           path: 'actor',
-           model: 'Actor'
-         }
-      })
-  .exec(
-    function(err, users){
+// Console.log color shortcuts
+const color_start = '\x1b[33m%s\x1b[0m'; // yellow
+const color_success = '\x1b[32m%s\x1b[0m'; // green
+const color_error = '\x1b[31m%s\x1b[0m'; // red
 
-      mlm_writer.pipe(fs.createWriteStream('results/mlm_eatsnaplove.csv'));
-      //s_writer.pipe(fs.createWriteStream('results/posts_eatsnaplove.csv'));
-      summary_writer.pipe(fs.createWriteStream('results/sum_eatsnaplove.csv'));
+/*
+  Gets the user models from the database, or folder of json files.
+*/
+async function getUserJsons() {
+    if (isResearchVersion) {
+        // establish initial Mongoose connection, if Research Site
+        mongoose.connect(process.env.PRO_MONGODB_URI, { useNewUrlParser: true });
+        // listen for errors after establishing initial connection
+        db = mongoose.connection;
+        db.on('error', (err) => {
+            console.error(err);
+            console.log(color_error, '%s MongoDB connection error.');
+            process.exit(1);
+        });
+        console.log(color_success, `Successfully connected to db.`);
+        const users = await User.find({ isStudent: true }).exec();
+        console.log(color_success, `...Finished reading from the db.`);
+        return users;
+    } else {
+        let users = [];
+        // Read the command inputs
+        const myArgs = process.argv.slice(2);
+        const directory = myArgs[0];
+        console.log(color_start, `Reading all .json files from folder ${directory}`);
 
-      for (var i = users.length - 1; i >= 0; i--) //for each inactive user in the users table
+        for (filename of fs.readdirSync(directory)) {
+            // if filename ends in '.json'
+            if (/(\w*)\.json$/gmi.test(filename)) {
+                const path = directory + "/" + filename;
+                let readFilePromise = function(filePath) {
+                    return new Promise((resolve, reject) => {
+                        fs.readFile(filePath, 'utf8', (err, data) => {
+                            if (err) {
+                                reject(err);
+                            }
+                            resolve(data);
+                        })
+                    })
+                }
+                const JsonBuffer = await readFilePromise(path).then(function(data) {
+                    return data;
+                });
+                const lines = JsonBuffer.split(/\n/);
+                lines.forEach(function(line) {
+                    if (line.trim() == "") {
+                        return;
+                    }
+                    try {
+                        users.push(JSON.parse(line));
+                    } catch (err) {
+                        console.log(err);
+                    }
+                })
+            }
+        }
+        console.log(color_success, `...Finished reading all files.`)
+        return users;
+    }
+}
+
+/*
+  Finds the name of the class this user belongs to via their class access code.
+*/
+async function getClassNameForUser(user) {
+    const classObject = await Class.findOne({ accessCode: user.accessCode }).exec();
+    const className = classObject.className;
+    return className;
+};
+
+/*
+  Gets the data from the provided .json file.
+  Helper function for:
+  - getSectionInformation(user, module_name), 
+  - getrec_act_GACounts(user, module_name),
+  - getrec_act_FPCounts(user, module_name),
+  - getReflectionCheckboxAnswers(user, module_name)
+  (Copied this function from the user controller).
+*/
+async function getJsonFromFile(filePath) {
+    let readFilePromise = function(filePath) {
+        return new Promise((resolve, reject) => {
+            fs.readFile(filePath, 'utf8', (err, data) => {
+                if (err) {
+                    reject(err);
+                }
+                resolve(data);
+            })
+        })
+    }
+    const JsonBuffer = await readFilePromise(filePath).then(function(data) {
+        return data;
+    });
+    let Json;
+    try {
+        Json = JSON.parse(JsonBuffer);
+    } catch (err) {
+        return next(err);
+    }
+    return Json;
+}
+
+/*
+  Returns if the module has reflection questions of that type (True/False Boolean)
+*/
+async function hasReflectionType(module_name, type) {
+    const reflectionSectionData = await getJsonFromFile("./TD-jsons/reflectionSectionData.json");
+    let hasType = false;
+    for (const questionNumber in reflectionSectionData[module_name]) {
+        if (reflectionSectionData[module_name][questionNumber].type === type) {
+            hasType = true;
+            break;
+        }
+    }
+    return hasType;
+}
+
+/*
+  Compare function used to sort pageLog by increasing time. Used as a parameter
+  for Array.prototype.sort(). Read about compare functions here:
+  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort
+*/
+function compareTimestamps(a, b) {
+    if (a.time < b.time) {
+        return -1;
+    }
+    if (a.time > b.time) {
+        return 1;
+    }
+    return 0;
+};
+
+/*
+  Calculates the amount of time spent by the user in each section of a module.
+  This is calculated by taking the difference between timestamps of sequential
+  page visits. Page visits are recorded in the pageLog field.
+  Assumptions:
+    - pageLog is already sorted in order of increasing timestamps.
+    - Final reported times are in seconds.
+    - Values are rounded to the nearest integer using Math.round() at the end of
+      the calcuation.
+    - Sections are defined the same way as the progress bar, using
+      progressDataA.json and progressDataB.json.
+  Parameters:
+    - sectionInformation: Object - this is modified by this function, and will
+        contain the final calculations.
+    - sectionJson: Object - used to match pages to their corresponding sections.
+    - pageLog: [Object] - list of page visits by this user, sorted by time order.
+    - module_name: String - the module name to filter by.
+  Returns:
+    This function does not return anything.
+    This function modifies the sectionInformation parameter.
+*/
+function calculateAndModifyTimeSpent(sectionInformation, sectionJson, pageLog, module_name) {
+    for (let i = 0, l = pageLog.length - 1; i < l; i++) {
+        // Skip page visits that were not within the specified module.
+        if (isResearchVersion) {
+            if ((!pageLog[i].subdirectory2) || (pageLog[i].subdirectory2 !== module_name)) {
+                continue;
+            }
+        }
+        // Get the time spent on this page by taking the difference between the
+        // next recorded page visit.
+        let timeDurationOnPage = (isResearchVersion) ?
+            (pageLog[i + 1].time - pageLog[i].time) :
+            new Date(pageLog[i + 1].time['$date']) - new Date(pageLog[i].time['$date']);
+        // Only include times that are shorter than 30 minutes (1800000 milliseconds).
+        if (timeDurationOnPage > 1800000) {
+            continue;
+        }
+        // Add the page time to the appropriate section's total time.
+        const sectionNumber = sectionJson[pageLog[i].subdirectory1];
+        if (sectionNumber === "1") {
+            sectionInformation.timeSpent.tt += timeDurationOnPage;
+        } else if (sectionNumber === "2") {
+            sectionInformation.timeSpent.ga += timeDurationOnPage;
+        } else if (sectionNumber === "3") {
+            sectionInformation.timeSpent.fp += timeDurationOnPage;
+        } else if (sectionNumber === "4") {
+            sectionInformation.timeSpent.rf += timeDurationOnPage;
+        } else {
+            continue;
+        }
+    }
+    // Convert each number from milliseconds to seconds, and round the final
+    // number to the nearest integer with Math.round().
+    for (const section in sectionInformation.timeSpent) {
+        const sectionTimeInSeconds = sectionInformation.timeSpent[section] / 1000;
+        sectionInformation.timeSpent[section] = Math.round(sectionTimeInSeconds);
+    }
+}
+
+/*
+  Calculates the frequency that the user jumps between various module sections.
+  A jump is identified by comparing each pageLog entry's section number with
+  it's previous adjacent entry section number.
+  Assumptions:
+    - pageLog is already sorted in order of increasing timestamps.
+    - Sections are defined the same way as the progress bar, using
+      progressDataA.json and progressDataB.json.
+  Note: 
+    - In the research site, the module progress bar is disabled. Therefore, 
+    the user is unable to intuitively jump between various module sections within 
+    the application. The only ways the user is able to is by 1) clicking the 
+    browser back/forward button [which will most likely be calculated as sequential section
+    jumps, even if it's not the user's intent] or 2) inputting the URL browser path.
+  Parameters:
+    - sectionInformation: Object - this is modified by this function, and will
+        contain the final calculations.
+    - sectionJson: Object - used to match pages to their corresponding sections.
+    - pageLog: [Object] - list of page visits by this user, sorted by time order.
+    - module_name: String - the module name to filter by.
+  Returns:
+    This function does not return anything.
+    This function modifies the sectionInformation parameter.
+*/
+function calculateAndModifyJumpFrequency(sectionInformation, sectionJson, pageLog, module_name) {
+    if (pageLog.length < 2) {
+        return;
+    }
+    for (let i = 1, l = pageLog.length - 1; i < l; i++) {
+        // Skip page visits that were not within the specified module.
+        if (isResearchVersion) {
+            if ((!pageLog[i].subdirectory2) || (pageLog[i].subdirectory2 !== module_name)) {
+                continue;
+            }
+            if ((!pageLog[i - 1].subdirectory2) || (pageLog[i - 1].subdirectory2 !== module_name)) {
+                continue;
+            }
+        }
+        // Determine if this page sequence matches any of the predefined jump types.
+        for (const jumpType in sectionInformation.jumpFrequency) {
+            const fromSectionToCompare = sectionJson[pageLog[i - 1].subdirectory1];
+            const toSectionToCompare = sectionJson[pageLog[i].subdirectory1];
+            if (
+                fromSectionToCompare === sectionInformation.jumpFrequency[jumpType].fromSection &&
+                toSectionToCompare === sectionInformation.jumpFrequency[jumpType].toSection
+            ) {
+                // This page sequence matches the current jump type. Increment its count.
+                if (module_name === "privacy" && pageLog[i - 1].subdirectory1 === "sim2" & pageLog[i].subdirectory1 === "tutorial") {
+                    continue;
+                }
+                sectionInformation.jumpFrequency[jumpType].count++;
+            }
+        }
+    }
+};
+
+/*
+  Calculates key information relating to page sections: the time spent in each
+  section, as well as the frequency of jumps between certain sections.
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - sectionInformation: Object - object with properties representing the time
+        spent (in seconds) in each section of the module, and the frequency
+        of jumps betwen various sections in the module.
+*/
+async function getSectionInformation(user, module_name) {
+    const sectionInformation = {
+        timeSpent: {
+            tt: 0, // The time a learner spent on the tutorial (tt) section
+            ga: 0, // The time a learner spent on the guided activity (ga) section
+            fp: 0, // The time a learner spent on the freeplay (fp) section
+            rf: 0, // The time a learner spent on the reflection (rf) section
+        },
+        jumpFrequency: {
+            ga_to_tt: {
+                count: 0, // Frequency of jumping from the ga section to the tt section
+                fromSection: '2',
+                toSection: '1'
+            },
+            fp_to_tt: {
+                count: 0, // Frequency of jumping from the fp section to the tt section
+                fromSection: '3',
+                toSection: '1'
+            },
+            rf_to_tt: {
+                count: 0, // Frequency of jumping from the rf section to the tt section
+                fromSection: '4',
+                toSection: '1'
+            },
+            fp_to_ga: {
+                count: 0, // Frequency of jumping from the fp section to the ga section
+                fromSection: '3',
+                toSection: '2'
+            },
+            rf_to_ga: {
+                count: 0, // Frequency of jumping from the rf section to the ga section
+                fromSection: '4',
+                toSection: '2'
+            },
+            rf_to_fp: {
+                count: 0, // Frequency of jumping from the rf section to the fp section
+                fromSection: '4',
+                toSection: '3'
+            }
+        }
+    };
+    const pageLog = user.pageLog;
+    // Need to get the mappings between module pages and section numbers.
+    const sectionDataA = await getJsonFromFile("./TD-jsons/progressDataA.json");
+    const sectionDataB = await getJsonFromFile("./TD-jsons/progressDataB.json");
+    /* Short example of the data in progressDataA and progressDataB:
       {
-
-        var mlm = {};
-        var sur = {};
-        var sums = {};
-        mlm.id = users[i].mturkID;
-        sur.id = users[i].mturkID;
-        sums.id = users[i].mturkID;
-
-
-        mlm.email = users[i].email;
-        sur.email = users[i].email;
-        sums.email = users[i].email;
-
-        mlm.StartDate = users[i].createdAt;
-        sur.StartDate = users[i].createdAt;
-        sums.StartDate = users[i].createdAt;
-
-        console.log("In User "+ users[i].email);
-        //console.log("In User Number "+ i);
-
-        //UI - transparency script_type: String, //type of script they are running in
-        //post_nudge: String,
-
-        //mlm.script_type = users[i].script_type;
-        //sums.script_type = users[i].script_type;
-
-        //study group information
-
-        //moderation type, comment type (changing mod type labels from db for better readability)
-        if(users[i].flag_group === "none"){
-          mlm.moderationType = "unknown";
-          sums.moderationType = "unknown";
-        } else if (users[i].flag_group === "ai"){
-          mlm.moderationType = "automated";
-          sums.moderationType = "automated";
-        } else if (users[i].flag_group === "user"){
-          mlm.moderationType = "users";
-          sums.moderationType = "users";
-        } else { //this case should NEVER happen, but including as a precaution
-          mlm.moderationType = "?";
-          sums.moderationType = "?";
-        }
-
-        mlm.commentType = users[i].bully_group;
-        sums.commentType = users[i].bully_group;
-
-        //profile_perspective, uses booleans to indicate if a change was made
-        /*if (users[i].post_nudge == 'yes')
-        {
-          mlm.post_nudge = 1;
-          sums.post_nudge = 1;
-        }
-        else
-        {
-          mlm.post_nudge = 0;
-          sums.post_nudge = 0;
-        }*/
-
-
-        if (users[i].profile.name)
-        {
-          mlm.ProfileName = 1;
-          //sums.ProfileName = 1;
-        }
-        else
-        {
-          mlm.ProfileName = 0;
-          //sums.ProfileName = 0;
-        }
-
-        if (users[i].profile.location)
-        {
-          mlm.ProfileLocation = 1;
-          //sums.ProfileLocation = 1;
-        }
-        else
-        {
-          mlm.ProfileLocation = 0;
-          //sums.ProfileLocation = 0;
-        }
-
-        if (users[i].profile.bio)
-        {
-          mlm.ProfileBio = 1;
-          //sums.ProfileBio = 1;
-        }
-        else
-        {
-          mlm.ProfileBio = 0;
-          //sums.ProfileBio = 0;
-        }
-
-        if (users[i].profile.picture)
-        {
-          mlm.ProfilePicture = 1;
-          //sums.ProfilePicture = 1;
-        }
-        else
-        {
-          mlm.ProfilePicture = 0;
-          //sums.ProfilePicture = 0;
-        }
-
-        var parser = new UAParser();
-
-        if(users[i].log[0])
-        {
-
-          if (parser.setUA(users[i].log[0].userAgent).getDevice().type)
-          {
-            mlm.Device = parser.setUA(users[i].log[0].userAgent).getDevice().type;
-          }
-          else
-            mlm.Device = "Computer";
-
-
-
-          //sur.Device = mlm.Device;
-
-          mlm.Broswer = parser.setUA(users[i].log[0].userAgent).getBrowser().name;
-          //sur.Broswer = mlm.Broswer;
-
-          mlm.OS = parser.setUA(users[i].log[0].userAgent).getOS().name;
-          //sur.OS = mlm.OS;
-        }//if Log exists
-        else{
-          mlm.Device = "NA";
-          mlm.Broswer = "NA";
-          mlm.OS = "NA";
-        }
-
-        //reporting if the user completed the study or not
-        //log in 2x per day
-        //created 1 post per day
-        var day1_loginCount = 0;
-        var day2_loginCount = 0;
-
-        for(logIndex = users[i].log.length-1; logIndex >= 0; logIndex--){
-          if(users[i].log[logIndex].time.getTime() <= (users[i].createdAt.getTime() + 86400000)){
-            day1_loginCount++;
-          }else if ((users[i].log[logIndex].time.getTime() > (users[i].createdAt.getTime() + 86400000)) && (users[i].log[logIndex].time.getTime() <= (users[i].createdAt.getTime() + 172800000))){
-            day2_loginCount++;
-          }
-        }
-
-        var day1_postCount = 0;
-        var day2_postCount = 0;
-
-        for(userPostIndex = users[i].posts.length-1; userPostIndex >= 0; userPostIndex--){
-          if(users[i].posts[userPostIndex].absTime.getTime() <= (users[i].createdAt.getTime() + 86400000)){
-            day1_postCount++;
-          }else if ((users[i].posts[userPostIndex].absTime.getTime() > (users[i].createdAt.getTime() + 86400000)) && (users[i].posts[userPostIndex].absTime.getTime() <= (users[i].createdAt.getTime() + 172800000))){
-            day2_postCount++;
-          }
-        }
-
-        if((day1_loginCount >=2) && (day2_loginCount >= 2) && (day1_postCount >=1) && (day2_postCount >= 1)) {
-          mlm.CompletedStudy = 1;
-          sums.CompletedStudy = 1;
-        } else {
-          mlm.CompletedStudy = 0;
-          sums.CompletedStudy = 0;
-        }
-
-        if(((day1_loginCount >=2) && (day1_postCount >=1)) || ((day2_loginCount >= 2) && (day2_postCount >= 1))) {
-          mlm.MinimumOneDayCompleted = 1;
-          sums.MinimumOneDayCompleted = 1;
-        } else {
-          mlm.MinimumOneDayCompleted = 0;
-          sums.MinimumOneDayCompleted = 0;
-        }
-
-        if((day1_loginCount >=2) && (day1_postCount >=1)) {
-          mlm.CompletedDay1 = 1;
-          sums.CompletedDay1 = 1;
-        } else {
-          mlm.CompletedDay1 = 0;
-          sums.CompletedDay1 = 0;
-        }
-
-        if((day2_loginCount >=2) && (day2_postCount >=1)) {
-          mlm.CompletedDay2 = 1;
-          sums.CompletedDay2 = 1;
-        } else {
-          mlm.CompletedDay2 = 0;
-          sums.CompletedDay2 = 0;
-        }
-
-        mlm.siteLogins = users[i].log.length;
-        mlm.GeneralPostNumber = users[i].numPosts + 1;
-
-        mlm.day1_logins = day1_loginCount;
-        mlm.day1_posts = day1_postCount;
-        mlm.day2_logins = day2_loginCount;
-        mlm.day2_posts = day2_postCount;
-
-        sums.day1_logins = day1_loginCount;
-        sums.day1_posts = day1_postCount;
-        sums.day2_logins = day2_loginCount;
-        sums.day2_posts = day2_postCount;
-
-        sums.siteLogins = users[i].log.length;
-        sums.GeneralPostNumber = users[i].numPosts + 1;
-        sums.GeneralCommentNumber = users[i].numComments + 1;
-
-
-
-      /*if (users[i].completed)
-        {
-          mlm.CompletedStudy = 1;
-          sums.CompletedStudy = 1;
-          //sur.CompletedStudy = 1;
-        }
-        else
-        {
-          mlm.CompletedStudy = 0;
-          sums.CompletedStudy = 0;
-          //sur.CompletedStudy = 0;
-        }*/
-
-        if (users[i].study_days.length > 0) //how many visits per day of the study
-        {
-          mlm.DayOneVists = users[i].study_days[0];
-          mlm.DayTwoVists = users[i].study_days[1];
-          //mlm.DayThreeVists = users[i].study_days[2];
-
-          sums.DayOneVists = users[i].study_days[0];
-          sums.DayTwoVists = users[i].study_days[1];
-          //sums.DayThreeVists = users[i].study_days[2];
-        }
-
-
-        mlm.GeneralLikeNumber = 0;
-        mlm.GeneralPostLikes = 0;
-        mlm.GeneralCommentLikes = 0;
-        mlm.GeneralFlagNumber = 0;
-        mlm.GeneralPostFlags = 0;
-        mlm.GeneralCommentFlags = 0;
-
-
-        mlm.GeneralCommentNumber = users[i].numComments + 1;
-
-        //info about specific page views
-        mlm.visits_notification = 0;
-        mlm.visits_policy = 0;
-        mlm.visits_day1_flagged_victim = 0;
-        mlm.visits_day1_flagged_bully = 0;
-        mlm.visits_day1_notflagged_victim = 0;
-        mlm.visits_day1_notflagged_bully = 0;
-        mlm.visits_day2_flagged_victim= 0;
-        mlm.visits_day2_flagged_bully = 0;
-        mlm.visits_day2_flagged_victim = 0;
-        mlm.visits_day2_notflagged_victim = 0;
-        mlm.visits_day2_notflagged_bully = 0;
-        mlm.visits_general = 0;
-
-        for(var z = 0; z < users[i].pageLog.length; ++z){
-
-            if(users[i].pageLog[z].page == "Notifications"){
-              mlm.visits_notification++;
-            }else if((users[i].pageLog[z].page == "PolicyComment") ||(users[i].pageLog[z].page == "PolicyMenu")) {
-              mlm.visits_policy++;
-
-            //day 1
-            }else if (users[i].pageLog[z].page == "casssssssssie") {
-              mlm.visits_day1_flagged_victim++;
-            }else if (users[i].pageLog[z].page == "bblueberryy"){
-              mlm.visits_day1_flagged_bully++;
-            }else if (users[i].pageLog[z].page == "jake_turk"){
-              mlm.visits_day1_notflagged_victim++;
-            }else if (users[i].pageLog[z].page == "jupiterpride"){
-              mlm.visits_day1_notflagged_bully++;
-
-            //day 2
-            }else if (users[i].pageLog[z].page == "SamTHEMAN"){
-              mlm.visits_day2_flagged_victim++;
-            }else if (users[i].pageLog[z].page == "Smitty12"){
-              mlm.visits_day2_flagged_bully++;
-            }else if (users[i].pageLog[z].page == "southerngirlCel"){
-              mlm.visits_day2_notflagged_victim++;
-            }else if (users[i].pageLog[z].page == "sweetpea"){
-              mlm.visits_day2_notflagged_bully++;
-
-            }else{
-              mlm.visits_general++;
-            }
-        }//end of pageLog loop
-
-        //Responses and times for day 1
-        mlm.day1_modResponse = users[i].day1Response;
-        mlm.day1_modResponseTime = users[i].day1ResponseTime;
-        mlm.day1_policyResponse = users[i].day1ViewPolicyResponse;
-        mlm.day1_policyResponseTime = users[i].day1ViewPolicyResponseTime;
-        mlm.day1_totalPolicyViews = users[i].day1ViewPolicySources.length;
-        mlm.day1_firstPolicyViewTime = 0;
-        mlm.day1_averagePolicyViewTime = 0;
-        if(users[i].day1ViewPolicyTimes.length > 0){
-          mlm.day1_firstPolicyViewTime = users[i].day1ViewPolicyTimes[0];
-          var averagePolicyViewTime = 0;
-          for(v = 0; v < users[i].day1ViewPolicyTimes.length; v++){
-            averagePolicyViewTime = averagePolicyViewTime + users[i].day1ViewPolicyTimes[v];
-          }
-          averagePolicyViewTime = averagePolicyViewTime / users[i].day1ViewPolicyTimes.length;
-          mlm.day1_averagePolicyViewTime = averagePolicyViewTime;
-        }
-        mlm.day1_policyVisitSources = users[i].day1ViewPolicySources; //this is in order of occurrence
-
-        //responses and times for day 2
-        mlm.day2_modResponse = users[i].day2Response;
-        mlm.day2_modResponseTime = users[i].day2ResponseTime;
-        mlm.day2_policyResponse = users[i].day2ViewPolicyResponse;
-        mlm.day2_policyResponseTime = users[i].day2ViewPolicyResponseTime;
-        mlm.day2_totalPolicyViews = users[i].day2ViewPolicySources.length;
-        mlm.day2_firstPolicyViewTime = 0;
-        mlm.day2_averagePolicyViewTime = 0;
-        if(users[i].day2ViewPolicyTimes.length > 0){
-          mlm.day2_firstPolicyViewTime = users[i].day2ViewPolicyTimes[0];
-          var averagePolicyViewTime = 0;
-          for(v = 0; v < users[i].day2ViewPolicyTimes.length; v++){
-            averagePolicyViewTime = averagePolicyViewTime + users[i].day2ViewPolicyTimes[v];
-          }
-          averagePolicyViewTime = averagePolicyViewTime / users[i].day2ViewPolicyTimes.length;
-          mlm.day2_averagePolicyViewTime = averagePolicyViewTime;
-        }
-        mlm.day2_policyVisitSources = users[i].day2ViewPolicySources; //this is in order of occurrence
-
-        //per feedAction
-        sur.postID = -1;
-        sur.body = "";
-        sur.picture = "";
-        sur.absTime = "";
-        sur.siteLogins = -1;
-        sur.generalpagevisit = -1;
-        sur.DayOneVists = -1;
-        sur.DayTwoVists = -1;
-        sur.DayThreeVists = -1;
-        sur.GeneralLikeNumber = -1;
-        sur.GeneralFlagNumber = -1;
-        sur.GeneralPostNumber = -1;
-        sur.GeneralCommentNumber = -1;
-
-
-        //big list of ALL possible data labels, so that if a user doens't complete day 2, all of them still show up.
-        mlm.day1_Flagged_VictimPost_Liked = 0;
-        mlm.day1_Flagged_VictimPost_TimesLiked = 0;
-        mlm.day1_Flagged_VictimPost_LastLikeTime = 0;
-        mlm.day1_Flagged_VictimPost_Flagged = 0;
-        mlm.day1_Flagged_VictimPost_FlaggedTime = 0;
-        mlm.day1_Flagged_VictimPost_TotalViews = 0;
-        mlm.day1_Flagged_VictimPost_AvgViewTime = 0;
-        mlm.day1_Flagged_BullyComment_Liked = 0;
-        mlm.day1_Flagged_BullyComment_TimesLiked = 0;
-        mlm.day1_Flagged_BullyComment_LastLikeTime = 0;
-        mlm.day1_Flagged_BullyComment_Flagged = 0;
-        mlm.day1_Flagged_BullyComment_LastFlagTime = 0;
-        mlm.day1_Flagged_OtherComment229_Liked = 0;
-        mlm.day1_Flagged_OtherComment229_TimesLiked = 0;
-        mlm.day1_Flagged_OtherComment229_Flagged = 0;
-        mlm.day1_Flagged_OtherComment263_Liked = 0;
-        mlm.day1_Flagged_OtherComment263_TimesLiked = 0;
-        mlm.day1_Flagged_OtherComment263_Flagged = 0;
-        mlm.day1_Flagged_OtherComment150_Liked = 0;
-        mlm.day1_Flagged_OtherComment150_TimesLiked = 0;
-        mlm.day1_Flagged_OtherComment150_Flagged = 0;
-        mlm.day1_NotFlagged_VictimPost_Liked = 0;
-        mlm.day1_NotFlagged_VictimPost_TimesLiked = 0;
-        mlm.day1_NotFlagged_VictimPost_LastLikeTime = 0;
-        mlm.day1_NotFlagged_VictimPost_Flagged = 0;
-        mlm.day1_NotFlagged_VictimPost_FlaggedTime = 0;
-        mlm.day1_NotFlagged_VictimPost_TotalViews = 0;
-        mlm.day1_NotFlagged_VictimPost_AvgViewTime = 0;
-        mlm.day1_NotFlagged_BullyComment_Liked = 0;
-        mlm.day1_NotFlagged_BullyComment_TimesLiked = 0;
-        mlm.day1_NotFlagged_BullyComment_LastLikeTime = 0;
-        mlm.day1_NotFlagged_BullyComment_Flagged = 0;
-        mlm.day1_NotFlagged_BullyComment_LastFlagTime = 0;
-        mlm.day2_Flagged_VictimPost_Liked = 0;
-        mlm.day2_Flagged_VictimPost_TimesLiked = 0;
-        mlm.day2_Flagged_VictimPost_LastLikeTime = 0;
-        mlm.day2_Flagged_VictimPost_Flagged = 0;
-        mlm.day2_Flagged_VictimPost_FlaggedTime = 0;
-        mlm.day2_Flagged_VictimPost_TotalViews = 0;
-        mlm.day2_Flagged_VictimPost_AvgViewTime = 0;
-        mlm.day2_Flagged_BullyComment_Liked = 0;
-        mlm.day2_Flagged_BullyComment_TimesLiked = 0;
-        mlm.day2_Flagged_BullyComment_LastLikeTime = 0;
-        mlm.day2_Flagged_BullyComment_Flagged = 0;
-        mlm.day2_Flagged_BullyComment_LastFlagTime = 0;
-        mlm.day2_Flagged_OtherComment310_Liked = 0;
-        mlm.day2_Flagged_OtherComment310_TimesLiked = 0;
-        mlm.day2_Flagged_OtherComment310_Flagged = 0;
-        mlm.day2_NotFlagged_VictimPost_Liked = 0;
-        mlm.day2_NotFlagged_VictimPost_TimesLiked = 0;
-        mlm.day2_NotFlagged_VictimPost_LastLikeTime = 0;
-        mlm.day2_NotFlagged_VictimPost_Flagged = 0;
-        mlm.day2_NotFlagged_VictimPost_FlaggedTime = 0;
-        mlm.day2_NotFlagged_VictimPost_TotalViews = 0;
-        mlm.day2_NotFlagged_VictimPost_AvgViewTime = 0;
-        mlm.day2_NotFlagged_BullyComment_Liked = 0;
-        mlm.day2_NotFlagged_BullyComment_TimesLiked = 0;
-        mlm.day2_NotFlagged_BullyComment_LastLikeTime = 0;
-        mlm.day2_NotFlagged_BullyComment_Flagged = 0;
-        mlm.day2_NotFlagged_BullyComment_LastFlagTime = 0;
-
-        //end the big list of data labels!!!
-        //Now fill them
-
-        console.log("User has "+ users[i].posts.length+" Posts");
-        for (var pp = users[i].posts.length - 1; pp >= 0; pp--)
-        {
-          var temp_post = {};
-          temp_post = JSON.parse(JSON.stringify(sur));
-
-
-          //console.log("Checking User made post"+ users[i].posts[pp].postID)
-          temp_post.postID = users[i].posts[pp].postID;
-          temp_post.body = users[i].posts[pp].body;
-          temp_post.picture = users[i].posts[pp].picture;
-          temp_post.absTime = users[i].posts[pp].absTime;
-
-          var postStatsIndex = _.findIndex(users[i].postStats, function(o) { return o.postID == users[i].posts[pp].postID; });
-          if(postStatsIndex!=-1)
-          {
-              console.log("Check post LOG!!!!!!");
-              temp_post.siteLogins = users[i].postStats[postStatsIndex].citevisits;
-              temp_post.generalpagevisit = users[i].postStats[postStatsIndex].generalpagevisit;
-              temp_post.DayOneVists = users[i].postStats[postStatsIndex].DayOneVists;
-              temp_post.DayTwoVists = users[i].postStats[postStatsIndex].DayTwoVists;
-              temp_post.DayThreeVists = users[i].postStats[postStatsIndex].DayThreeVists;
-              temp_post.GeneralLikeNumber = users[i].postStats[postStatsIndex].GeneralLikeNumber;
-              temp_post.GeneralPostLikes = users[i].postStats[postStatsIndex].GeneralPostLikes;
-              temp_post.GeneralCommentLikes = users[i].postStats[postStatsIndex].GeneralCommentLikes;
-              temp_post.GeneralFlagNumber = users[i].postStats[postStatsIndex].GeneralFlagNumber;
-              temp_post.GeneralPostNumber = users[i].postStats[postStatsIndex].GeneralPostNumber;
-              temp_post.GeneralCommentNumber = users[i].postStats[postStatsIndex].GeneralCommentNumber;
-          }
-
-          sur_array.push(temp_post);
-        }
-
-        //per feedAction
-        //for (var k = users[i].feedAction.length - 1; k >= 0; k--)
-        for (var k = 0; k <= (users[i].feedAction.length - 1); k++)
-        {
-          var currentAction = users[i].feedAction[k];
-          var namePrefix = "";
-          //singling out the posts we are interested in (there are 4)
-          //TODO: Use dynamic vars to name according to the case so I don't have to copy paste the code 4 times with different vars
-          if(currentAction.post !== null){
-            if(currentAction.post.id == day1Flagged){
-              namePrefix = "day1_Flagged_";
-            } else if (currentAction.post.id == day1NotFlagged){
-              namePrefix = "day1_NotFlagged_";
-            } else if (currentAction.post.id == day2Flagged){
-              namePrefix = "day2_Flagged_";
-            } else if (currentAction.post.id == day2NotFlagged){
-              namePrefix = "day2_NotFlagged_";
-            }
-
-            if((currentAction.post.id == day1Flagged) || (currentAction.post.id == day1NotFlagged) || (currentAction.post.id == day2Flagged) || (currentAction.post.id == day2NotFlagged)){
-              mlm[namePrefix + "VictimPost_Liked"] = +currentAction.liked;
-              mlm[namePrefix +"VictimPost_TimesLiked"] = currentAction.likeTime.length;
-              if(currentAction.likeTime.length > 0){
-                mlm[namePrefix +"VictimPost_LastLikeTime"] = currentAction.likeTime[currentAction.likeTime.length -1];
-              }
-              //logic to determine if flagged or not based on if there are any timestamps
-              if(currentAction.flagTime.length > 0) {
-                mlm[namePrefix +"VictimPost_Flagged"] = 1;
-                mlm[namePrefix +"VictimPost_FlaggedTime"] = currentAction.flagTime[currentAction.flagTime.length - 1];
-              } else {
-                mlm[namePrefix +"VictimPost_Flagged"] = 0;
-              }
-              mlm[namePrefix +"VictimPost_TotalViews"] = currentAction.viewedTime.length;
-              //calculate average view time for the post
-              var averageVictimPostViewTime = 0;
-              for(var m = currentAction.viewedTime.length - 1; m >= 0; m--){
-                averageVictimPostViewTime = averageVictimPostViewTime + currentAction.viewedTime[m];
-              }
-              if(currentAction.viewedTime.length != 0){
-                averageVictimPostViewTime = averageVictimPostViewTime / currentAction.viewedTime.length;
-                mlm[namePrefix + "VictimPost_AvgViewTime"] = averageVictimPostViewTime;
-              }
-              //info about the bully comment, report correct comment based on ambig/unambig bully group
-              //for(var j = currentAction.comments.length - 1; j >= 0; j--){
-
-              for(var j = 0; j <= (currentAction.comments.length - 1); j++){
-
-                //shortcut to get current comment
-                currentComment = currentAction.comments[j];
-
-                //get the comment id for normal Comments data label
-                var otherCommentID = 0;
-
-                if(currentComment.comment == otherComment229){
-                  otherCommentID = 229;
-                }else if (currentComment.comment == otherComment263){
-                  otherCommentID = 263;
-                } else if (currentComment.comment == otherComment150){
-                  otherCommentID = 150;
-                } else if (currentComment.comment == otherComment310){
-                  otherCommentID = 310;
-                } else {
-                  otherCommentID = 0;
-                }
-
-                if(!currentComment.new_commment){ //safeguard - everything will break if you try to query the comment id of a user comment
-                  //only want to show data for the correct case, ambig or unambig
-                  if(users[i].bully_group === "ambig"){
-                    if((currentComment.comment == day1FlaggedCommentAmbig) || (currentComment.comment == day1NotFlaggedComment) || (currentComment.comment == day2FlaggedCommentAmbig) || (currentComment.comment == day2NotFlaggedComment)){
-                      //this is a bully comment that we want all the data for
-                      mlm[namePrefix+"BullyComment_Liked"] = +currentComment.liked;
-                      mlm[namePrefix +"BullyComment_TimesLiked"] = currentComment.likeTime.length;
-                      if(currentComment.likeTime.length > 0){
-                        mlm[namePrefix +"BullyComment_LastLikeTime"] = currentComment.likeTime[currentComment.likeTime.length -1];
-                      }
-                      mlm[namePrefix+"BullyComment_Flagged"] = +currentComment.flagged;
-                      if(currentComment.flagTime.length > 0){
-                        mlm[namePrefix +"BullyComment_LastFlagTime"] = currentComment.flagTime[currentComment.flagTime.length -1];
-                      }
-                    } else { //this is a normal comment that we want only half the data for
-                      if(otherCommentID !== 0){
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_Liked"] = +currentComment.liked;
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_TimesLiked"] = currentComment.likeTime.length;
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_Flagged"] = +currentComment.flagged;
-                      }
-                    }
-                  } else if (users[i].bully_group === "unambig"){
-                    if((currentComment.comment == day1FlaggedCommentUnambig) || (currentComment.comment == day1NotFlaggedComment) || (currentComment.comment == day2FlaggedCommentUnambig) || (currentComment.comment == day2NotFlaggedComment)){
-                      //this is a bully comment that we want all the data for
-                      mlm[namePrefix+"BullyComment_Liked"] = +currentComment.liked;
-                      mlm[namePrefix +"BullyComment_TimesLiked"] = currentComment.likeTime.length;
-                      if(currentComment.likeTime.length > 0){
-                        mlm[namePrefix +"BullyComment_LastLikeTime"] = currentComment.likeTime[currentComment.likeTime.length -1];
-                      }
-                      mlm[namePrefix+"BullyComment_Flagged"] = +currentComment.flagged;
-                      if(currentComment.flagTime.length > 0){
-                        mlm[namePrefix +"BullyComment_LastFlagTime"] = currentComment.flagTime[currentComment.flagTime.length -1];
-                      }
-                    } else { //this is a normal comment that we only want half the data for
-                      if(otherCommentID !== 0){
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_Liked"] = +currentComment.liked;
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_TimesLiked"] = currentComment.likeTime.length;
-                        mlm[namePrefix+"OtherComment"+otherCommentID+"_Flagged"] = +currentComment.flagged;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-          //done exporting info about special posts!
-
-          //console.log(util.inspect(users[i].feedAction[k], false, null))
-          if(users[i].feedAction[k].post == null)
-          {
-            //console.log("@$@$@$@$@ action ID NOT FOUND: "+users[i].feedAction[k].id);
-          }
-
-          //not a bully message
-          else
-          {
-            //getting general like and flag counts, this counts the relevant posts and comments as well
-
-            var currentActionNormal = users[i].feedAction[k];
-
-            //total number of likes
-            if(users[i].feedAction[k].liked)
-            {
-              mlm.GeneralLikeNumber++;
-              mlm.GeneralPostLikes++;
-            }
-
-            //total number of flags
-            if(users[i].feedAction[k].flagTime[0])
-            {
-              mlm.GeneralFlagNumber++;
-              mlm.GeneralPostFlags++;
-            }
-
-            //also need to count likes and flags on comments, so iterate through the comments
-            for(var n = 0; n <= (currentActionNormal.comments.length - 1); n++){
-              currentComment = currentActionNormal.comments[n];
-              //console.log(currentComment);
-              if(currentComment.liked){
-                mlm.GeneralLikeNumber++;
-                mlm.GeneralCommentLikes++;
-              }
-              if(currentComment.flagged){
-                mlm.GeneralFlagNumber++;
-                mlm.GeneralCommentFlags++;
-              }
-            }
-          }
-
-
-        }//end of Per FeedAction
-
-      //mlm.GeneralReplyNumber = users[i].numReplies + 1;
-
-      summary_writer.write(sums);
-      mlm_writer.write(mlm);
-      //s_writer.write(sur);
-
-
-    }//for each user
-
-    /*
-    for (var zz = 0; zz < mlm_array.length; zz++) {
-      //console.log("writing user "+ mlm_array[zz].email);
-      //console.log("writing Bully Post "+ mlm_array[zz].BullyingPost);
-      mlm_writer.write(mlm_array[zz]);
-    }
+        "start": "1",
+        "sim": "2",
+        "trans_script": "3",
+        "modual": "3",
+        "results": "4",
+        "quiz": "4",
+        "end": "end"
+      }
+      where the key corresponds to page name, value corresponds to a section number
+      1 = "tutorial" section
+      2 = "guided activity" section
+      3 = "freeplay" section
+      4 = "reflection" section
     */
-    console.log("Post Table should be "+ sur_array.length);
-      for (var zz = 0; zz < sur_array.length; zz++) {
-      //console.log("writing user "+ mlm_array[zz].email);
-      console.log("writing Post for user "+ zz);
-      //s_writer.write(sur_array[zz]);
+    // Select the corresponding sectionData, A or B, to use depending on the module.
+    let sectionJson = new Object();
+    switch (module_name) {
+        case 'cyberbullying':
+        case 'digfoot':
+            sectionJson = sectionDataB;
+            break;
+        default:
+            sectionJson = sectionDataA;
+            break;
+    }
+    // Sort the pageLog array by increasing time.
+    pageLog.sort(compareTimestamps);
+    // Calculate data and modify sectionInformation.
+    calculateAndModifyTimeSpent(sectionInformation, sectionJson, pageLog, module_name);
+    calculateAndModifyJumpFrequency(sectionInformation, sectionJson, pageLog, module_name);
+    return sectionInformation;
+};
+
+/*
+  Determines the counts of various freeplay (FP) section actions by a single research
+  participant within a module.
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - activityCounts: Object - object with properties representing action counts.
+*/
+function getActivityCountsFP(user, module_name) {
+    const freeplayActions = user.feedAction;
+    const activityCounts = {
+        likeCount: 0, // Number of posts this user liked in the FP section
+        flagCount: 0, // Number of posts this user flagged in the FP section
+        commentCount: 0 // Number of posts this user commented on in the FP section
+    };
+    for (const post of freeplayActions) {
+        // Skip actions on posts that are not from the specified module_name.
+        if (isResearchVersion) {
+            if (post.modual !== module_name) {
+                continue;
+            }
+        }
+        // Increment likeCount if the user liked this post.
+        if (post.liked) {
+            activityCounts.likeCount++;
+        }
+        // Increment flagCount if the user flagged this post.
+        if (post.flagged) {
+            activityCounts.flagCount++;
+        }
+        // Iterate through the comment-type actions to find any user-created comments
+        if (post.comments) {
+            activityCounts.commentCount += post.comments.filter(el => el.new_comment).length;
+        }
+    }
+    return activityCounts;
+};
+
+/*
+  Determines the counts of reflection questions attempted by a single research
+  participant within a module.
+  What is considered an attempt?
+  open-ended question: the response is not an empty string.
+  checkbox: at least once box has been checked.
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - reflectionAttemptCounts: Object - object with properties representing attempt counts.
+*/
+async function getReflectionAttemptCounts(user, module_name) {
+    const hasCheckboxType = await hasReflectionType(module_name, "checkbox");
+    const hasWrittenType = await hasReflectionType(module_name, "written");
+    const hasRadioType = await hasReflectionType(module_name, "radio");
+    const reflectionAttemptCounts = {
+        checkbox_rf: (hasCheckboxType) ? 0 : "",
+        open_ended_rf: (hasWrittenType) ? 0 : "",
+        radio_rf: (hasRadioType ? 0 : "")
+    };
+    /*
+      In the event where a user has completed the reflection section twice (which
+      would not be typical), we only want to increment the counts once per
+      question.
+      Ex. A user answers open-ended question 1 three times.
+      One attempt where the question is blank, and the other 2 attemps have inputs.
+      In this case, open_ended_rf should be incremented once.
+      reflectionAttemptHistory keeps track of when questions already have a
+      counted attempt from this user.
+    */
+
+    let mostRecentAttempt;
+    if (isResearchVersion) {
+        // Skip responses on questions that are not from the specified module_name.
+        const module_ReflectionAction = user.reflectionAction.filter(reflectionAction => reflectionAction.modual === module_name);
+        mostRecentAttempt = module_ReflectionAction[module_ReflectionAction.length - 1];
+    } else {
+        if (user.reflectionAnswers) {
+            mostRecentAttempt = user.reflectionAnswers[user.reflectionAnswers.length - 1];
+        } else {
+            mostRecentAttempt = user.reflectionAction[user.reflectionAction.length - 1];
+        }
     }
 
-    mlm_writer.end();
-    summary_writer.end();
-    //s_writer.end();
-    console.log('Wrote MLM!');
-    mongoose.connection.close();
+    if (!mostRecentAttempt) {
+        return reflectionAttemptCounts;
+    }
+    for (const reflectionResponse of mostRecentAttempt.answers) {
+        const questionNumber = reflectionResponse.questionNumber;
+        switch (reflectionResponse.type) {
+            case 'written':
+                {
+                    // Any non-empty string counts as an attempt.
+                    if (reflectionResponse.writtenResponse.trim() !== '') {
+                        reflectionAttemptCounts.open_ended_rf++;
+                    }
+                    break;
+                }
+            case 'habitsUnique':
+                {
+                    // Any non-empty string counts as an attempt.
+                    if (reflectionResponse.writtenResponse.trim() !== '') {
+                        reflectionAttemptCounts.open_ended_rf++;
+                    }
+                    break;
+                }
+            case 'checkbox':
+                {
+                    // Minimum of one checkbox must be selelected to count as an attempt.
+                    if (reflectionResponse.checkboxResponse > 0) {
+                        reflectionAttemptCounts.checkbox_rf++;
+                    }
+                    break;
+                }
+            case 'radio':
+                {
+                    // Must select a radio selection to count as an attempt.
+                    if (reflectionResponse.radioSelection) {
+                        reflectionAttemptCounts.radio_rf++;
+                    }
+                    break;
+                }
+            default:
+                {
+                    // There shouldn't be any other reflection response types. Log if there is.
+                    console.log(color_error, `WARNING: There was an unexpected reflection response type for ${questionNumber} in module ${module_name}: type ${reflectionResponse.type}`);
+                    break;
+                }
+        }
+    }
+    return reflectionAttemptCounts;
+}
 
-  });
+/*
+  Determines the number of times the user clicks the “back” button on the text bubbles 
+  on the tutorial pages of a given module.
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - backTTCounts: Integer - the number of times the "back" button is clicked
+*/
+function getback_TTCounts(user, module_name) {
+    let introjsStepActions;
+
+    /* Example of introjsStepAction 
+      subdirectory1: String, // which page the user is on
+      subdirectory2: String, // which module the user is on
+      stepNumber: Number, // which step this action is on (steps start from 0)
+      viewDuration: Number, // how long the user was on this step (milliseconds)
+      absoluteStartTime: Date // time the step opened in the real world
+    */
+    if (isResearchVersion) {
+        introjsStepActions = introjsStepActions.filter(action => action.subdirectory2 === module_name);
+    } else {
+        introjsStepActions = user.introjsStepAction;
+    }
+    const moduleTutorialStepActions = introjsStepActions.filter(action => action.subdirectory1 === 'tutorial');
+
+    let index = -1;
+    let backTTCounts = 0;
+
+    for (const step of moduleTutorialStepActions) {
+        if (step.stepNumber < index) {
+            backTTCounts++;
+        }
+        index = step.stepNumber;
+    }
+    return backTTCounts;
+};
+
+/*
+  Determines the number of "1"s in number n (in binary representation)
+  Helper function for getrec_act_GACounts(), getrec_act_FPCounts(), and getReflectionCheckboxAnswers().
+*/
+function countSetBits(n) {
+    var count = 0;
+    while (n) {
+        count += n & 1;
+        n >>= 1;
+    }
+    return count;
+}
+
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Guided Activity section of the 'Accounts and Password' module
+*/
+function getrec_act_GACounts_accountsModule(user, module_name) {
+    // get user's accountsAction
+    const gaActions = user.accountsAction;
+
+    var rec_act_GACounts = 0;
+
+    if (gaActions.find(action => action.subdirectory1 === "sim" &&
+            action.inputField === "password" && action.passwordStrength !== undefined &&
+            (action.passwordStrength === "Strong" || action.passwordStrength === "Very Strong"))) {
+        rec_act_GACounts += 1;
+    }
+
+    if (gaActions.find(action => action.subdirectory1 === "sim2" && action.inputText === "true")) {
+        rec_act_GACounts += 1;
+    }
+    return rec_act_GACounts;
+}
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Guided Activity section of the 'Healthy Social Media Habits' module
+*/
+function getrec_act_GACounts_habitsModule(user, module_name) {
+    // get user's habitsAction
+    const gaActions = user.habitsAction;
+
+    var rec_act_GACounts = 0;
+
+    if (gaActions.find(action => action.subdirectory1 === "sim3" &&
+            (action.actionType === "togglePauseNotifications" || action.actionType === "setPauseNotifications") && action.setValue === "pause")) {
+        rec_act_GACounts += 1;
+    }
+    return rec_act_GACounts;
+}
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Guided Activity section of the 'Is it Private Information?' module
+*/
+function getrec_act_GACounts_safePostingModule(user, module_name) {
+    // get user's chatAction
+    const gaActions = user.chatAction.filter(action => action.subdirectory1 === "sim");
+    if (gaActions.length === 0) {
+        return 1;
+    }
+
+    var rec_act_GACounts = 0;
+    if (gaActions.find(action => action.chatId === "chatbox1" && action.messages.length === 0)) {
+        rec_act_GACounts += 1;
+        return rec_act_GACounts;
+    }
+    if (gaActions.find(action => action.chatId === "chatbox1" && action.messages.length === 1 && (action.minimized || action.closed))) {
+        rec_act_GACounts += 1;
+        return rec_act_GACounts;
+    }
+    return rec_act_GACounts;
+}
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Guided Activity section of the 'Social Media Privacy' module
+*/
+function getrec_act_GACounts_privacyModule(user, module_name) {
+    // get user's chatAction
+    const gaActions = user.privacyAction.filter(action => action.subdirectory1 === "sim");
+    var rec_act_GACounts = 0;
+    if (gaActions.find(action => action.inputField === "isPrivate" && action.inputText === "true")) {
+        rec_act_GACounts += 1;
+    }
+    if (gaActions.find(action => action.inputField === "friendRequests" && action.inputText === "Friends of Friends")) {
+        rec_act_GACounts += 1;
+    }
+    if (gaActions.find(action => action.inputField === "shareLocation" && action.inputText === "false")) {
+        rec_act_GACounts += 1;
+    }
+    if (gaActions.find(action => action.inputField === "shareLocationWith" && action.inputText !== "Everyone")) {
+        rec_act_GACounts += 1;
+    }
+    return rec_act_GACounts;
+}
+
+/*
+  Determines the count of recommended actions the user takes in the Guided Activity section of a module
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - rec_act_GACounts: Integer - the number of recommended actions taken by the user in the GA section of module
+*/
+async function getrec_act_GACounts(user, module_name) {
+    var rec_act_GACounts = 0;
+    if (module_name === "accounts") {
+        return getrec_act_GACounts_accountsModule(user, module_name);
+    } else if (module_name === "habits") {
+        return getrec_act_GACounts_habitsModule(user, module_name);
+    } else if (module_name === "safe-posting") {
+        rec_act_GACounts += getrec_act_GACounts_safePostingModule(user, module_name);
+    } else if (module_name === "presentation") {
+        return;
+    } else if (module_name === "privacy") {
+        return getrec_act_GACounts_privacyModule(user, module_name);
+    }
+    // get module recommended actions
+    const recActions = await getJsonFromFile("./TD-jsons/guidedActivityRecActions.json");
+    // get user's guidedActivityActions (list of guidedActivityAction objects)
+    const gaActions = user.guidedActivityAction;
+
+    /* Example of guidedActivityAction
+      post: String, // Which post did the user interact with? ex: "cyberbullying_sim_post1"
+      modual: String, // which lesson mod did this take place in?
+      startTime: 0, // (not used in TestDrive)
+      liked: {type: Boolean, default: false}, // did the user like this post in the feed?
+      flagged: {type: Boolean, default: false}, // did the user flag this post in the feed?
+      flagTime  : [Date], // list of timestamps when the user flagged the post
+      likeTime  : [Date], //list of timestamps when the user liked the post
+      replyTime  : [Date], // list of timestamps when the user left a comment on the post
+
+      // popup modal info: one per open
+      modal: [new Schema({
+        modalName: String, // name of Modal
+        modalOpened: {type: Boolean, default: false}, // did the user open the modal?
+        modalOpenedTime: Number, // timestamp the user opened the modal
+        modalViewTime: Number, // Duration of time that the modal was open (in milliseconds)
+        modalCheckboxesCount: Number, // How many checkboxes are present in the modal
+        modalCheckboxesInput: Number, // Number which, when converted into binary format, corresponds to which checkboxes were checked
+        modalDropdownCount: Number, // How many accordion dropdown triangles are present in the modal
+        modalDropdownClick: Number, // Number which, when converted into a binary format, corresponds to which triangles were clicked
+      }
+
+      // comment info on an actor's post (fake post): one per comment
+      comments: [new Schema({
+        comment: String, // Which comment did the user interact with? ex: "cyberbullying_sim_post1_comment1"
+        liked: {type: Boolean, default: false}, // Is the comment liked ?
+        flagged: {type: Boolean, default: false}, // Is the comment flagged?
+        flagTime  : [Date], // list of timestamps when the user flagged the comment
+        likeTime  : [Date], // list of timestamps when the user liked the comment
+
+        new_comment: {type: Boolean, default: false}, // Is this a new comment?
+        new_comment_id: String, // Number, starting at 0, used to ID user-made comments (starts at 0)
+        comment_body: String, // Text of comment
+        absTime: Date, // Real-life timestamp of when the comment was made
+      }
+    */
+
+    const module_recActions = recActions[module_name]; // recommended actions that should be taken in the module
+    const module_gaActions = (isResearchVersion) ? gaActions.filter(action => action.modual === module_name) : gaActions; // user's actions taken in module
+
+    // loop through each post. For each post, check if user completes the recommended actions for that post
+    for (var postID in module_recActions) {
+        if (module_recActions.hasOwnProperty(postID)) {
+            // get recommended actions for the post
+            const post_recAction = module_recActions[postID];
+            // find corresponding post in user's actions
+            const post_gaAction = module_gaActions.find(action => action.post === postID);
+
+            if (post_gaAction === undefined) { // User did not conduct any actions on the post
+                continue;
+            }
+
+            // Checks to see if user left a comment on the post
+            if (post_recAction["commentOnPost"]) {
+                for (const commentObj of post_gaAction["comments"]) {
+                    if (commentObj["new_comment"]) { // code currently already doesn't allow a comment without text to be logged
+                        rec_act_GACounts += 1;
+                        break; // only count 1 comment
+                    }
+                }
+            }
+
+            // Checks to see if user flagged the post
+            if (post_recAction["flagPost"]) {
+                rec_act_GACounts += post_gaAction["flagged"] ? 1 : 0;
+            }
+
+            // Checks to see if user flagged comments
+            for (const commentID of post_recAction["flagComments"]) {
+                const comment = post_gaAction["comments"].find(commentObj => commentObj.comment !== undefined && commentObj.comment === commentID);
+                if (comment === undefined) { // User did not conduct any actions on the comment
+                    continue;
+                }
+                rec_act_GACounts += comment["flagged"] ? 1 : 0;
+            }
+
+            // Checks to see if user conducted recommended actions on modals
+            for (var modalName in post_recAction["modals"]) {
+                const modal_recActions = post_recAction["modals"][modalName];
+
+                const modal_gaActions_reverse = post_gaAction["modal"].slice().reverse(); // make copy & reverse, so we consider the most recent open of the modal
+                const modal = modal_gaActions_reverse.find(modalObj => modalObj.modalName === modalName);
+
+                if (modal === undefined) { // User did not interact with modal
+                    continue;
+                }
+
+                for (var action in modal_recActions) {
+                    if (action === "modalCheckboxesInput") {
+                        const rec_num = parseInt(modal_recActions[action], 2);
+                        const ga_num = modal[action];
+                        rec_act_GACounts += countSetBits(rec_num & ga_num);
+                    } else {
+                        rec_act_GACounts += (modal_recActions[action] === modal[action]) ? 1 : 0;
+                    }
+                }
+            }
+        }
+    }
+    return rec_act_GACounts;
+};
+
+/*
+  Finds the ObjectID of the post
+  Parameters: 
+    - post_id: Integer (defined in excel during population of database)
+  Helper function for getrec_act_FPCounts()
+*/
+async function getObjectIDForPost(post_id) {
+    const scriptObject = await Script.findOne({ post_id: post_id }).exec();
+    const script_objectID = scriptObject._id;
+    return script_objectID;
+};
+
+/*
+  Finds the ObjectID of the comment specified on post.
+  Parameters: 
+    - post_id: Integer (defined in excel during population of database)
+    - commentIndex: Integer indicating the number comment on post (ex: 1 = 1st comment on post)
+  Helper function for getrec_act_FPCounts()
+*/
+async function getObjectIDForComment(post_id, commentIndex) {
+    const scriptObject = await Script.findOne({ post_id: post_id }).exec();
+    const comment_objectID = scriptObject.comments[commentIndex - 1]._id;
+    return comment_objectID;
+}
+
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Free Play section of the 'Healthy Social Media Habits' module
+*/
+function getrec_act_FPCounts_habitsModule(user, module_name) {
+    // get user's accountsAction
+    const fpActions = user.habitsAction;
+
+    var rec_act_FPCounts = 0;
+
+    if (fpActions.find(action => action.subdirectory1 === "modual" && action.actionType === "clickSettingsTab")) {
+        rec_act_FPCounts += 1;
+    }
+
+    if (fpActions.find(action => action.subdirectory1 === "modual" && action.actionType === "clickMyActivityTab")) {
+        rec_act_FPCounts += 1;
+    }
+
+    if (fpActions.find(action => action.subdirectory1 === "modual" &&
+            (action.actionType === "togglePauseNotifications" || action.actionType === "setPauseNotifications") && action.setValue === "pause")) {
+        rec_act_FPCounts += 1;
+    }
+
+    if (fpActions.find(action => action.subdirectory1 === "modual" && action.actionType === "setDailyReminder")) {
+        rec_act_FPCounts += 1;
+    }
+    return rec_act_FPCounts;
+}
+/*
+  Helper Function: Determines the count of recommended actions the user takes in the Guided Activity section of the 'Is it Private Information?' module
+*/
+function getrec_act_FPCounts_safePostingModule(user, module_name) {
+    // get user's chatAction
+    const fpActions = user.chatAction.filter(action => action.subdirectory1 === "modual");
+    if (fpActions.length === 0) {
+        return 2;
+    }
+
+    var rec_act_FPCounts = 0;
+    const chatboxes = ["chatbox1", "chatbox2"]
+    for (const chatID of chatboxes) {
+        if (!fpActions.find(action => action.chatId === chatID)) {
+            rec_act_FPCounts += 1;
+            continue;
+        }
+        if (fpActions.find(action => action.chatId === chatID && action.messages.length === 0)) {
+            rec_act_FPCounts += 1;
+            continue;
+        }
+        if (fpActions.find(action => action.chatId === chatID && action.messages.length === 1 && (action.minimized || action.closed))) {
+            rec_act_FPCounts += 1;
+            continue;
+        }
+    }
+    return rec_act_FPCounts;
+}
+/*
+  Determines the count of recommended actions the user takes in the FreePlay Activity section of a module
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - rec_act_FPCounts: Integer - the number of recommended actions taken by the user in the FP section of module
+*/
+async function getrec_act_FPCounts(user, module_name) {
+    var rec_act_FPCounts = 0;
+    if (module_name === "accounts" || module_name === "privacy") {
+        return;
+    } else if (module_name === "habits") {
+        return getrec_act_FPCounts_habitsModule(user, module_name);
+    } else if (module_name === "safe-posting") {
+        rec_act_FPCounts += await getrec_act_FPCounts_safePostingModule(user, module_name);
+    } else if (module_name === "presentation") {
+        const userPosts = (isResearchVersion) ? user.posts.filter(post => post.module === "presentation") : user.posts;
+        return userPosts.length;
+    }
+    // get module recommended actions
+    const recActions = await getJsonFromFile("./TD-jsons/freeplayActivityRecActions.json");
+    // get user's freeplay section Actions (list of feedAction objects)
+    const fpActions = user.feedAction;
+
+    /* Example of feedAction
+      post: ObjectID, // Which post did the user interact with? 
+      modual: String, // which lesson mod did this take place in?
+      startTime: 0, // (not used in TestDrive)
+      liked: {type: Boolean, default: false}, // did the user like this post in the feed?
+      flagged: {type: Boolean, default: false}, // did the user flag this post in the feed?
+      flagTime  : [Date], // list of timestamps when the user flagged the post
+      likeTime  : [Date], //list of timestamps when the user liked the post
+      replyTime  : [Date], // list of timestamps when the user left a comment on the post
+
+      // popup modal info: one per open
+      modal: [new Schema({
+        modalName: String, // name of Modal
+        modalOpened: {type: Boolean, default: false}, // did the user open the modal?
+        modalOpenedTime: Number, // timestamp the user opened the modal
+        modalViewTime: Number, // Duration of time that the modal was open (in milliseconds)
+        modalCheckboxesCount: Number, // How many checkboxes are present in the modal
+        modalCheckboxesInput: Number, // Number which, when converted into binary format, corresponds to which checkboxes were checked
+        modalDropdownCount: Number, // How many accordion dropdown triangles are present in the modal
+        modalDropdownClick: Number, // Number which, when converted into a binary format, corresponds to which triangles were clicked
+      }
+
+      // comment info on an actor's post (fake post): one per comment
+      comments: [new Schema({
+        comment: ObjectID, // Which comment did the user interact with? 
+        liked: {type: Boolean, default: false}, // Is the comment liked ?
+        flagged: {type: Boolean, default: false}, // Is the comment flagged?
+        flagTime  : [Date], // list of timestamps when the user flagged the comment
+        likeTime  : [Date], // list of timestamps when the user liked the comment
+
+        new_comment: {type: Boolean, default: false}, // Is this a new comment?
+        new_comment_id: String, // Number, starting at 0, used to ID user-made comments (starts at 0)
+        comment_body: String, // Text of comment
+        absTime: Date, // Real-life timestamp of when the comment was made
+      }
+    */
+
+    const module_recActions = recActions[module_name]; // recommended actions that should be taken in the module
+    const module_fpActions = (isResearchVersion) ? fpActions.filter(action => action.modual === module_name) : fpActions; // user's actions taken in module
+
+    // loop through each post. For each post, check if user completes the recommended actions for that post
+    for (var post_id in module_recActions) {
+        if (module_recActions.hasOwnProperty(post_id)) {
+            // get recommended actions for the post
+            const post_recAction = module_recActions[post_id];
+
+            // If module is 'targeted', 'esteem' (customized module), only consider the posts that match the latest chosen topic
+            // Why? For special case: generally speaking, the student can only complete each module once, but in case a student uses the browser back buttons to change their topic
+            if (module_name === "esteem" || module_name === "targeted") {
+                if (isResearchVersion) {
+                    customTopic = (module_name === "targeted") ? user.targetedAdTopic[user.targetedAdTopic.length - 1] : user.esteemTopic[user.esteemTopic.length - 1];
+                } else {
+                    customTopic = user.chosenTopic[user.chosenTopic.length - 1]
+                }
+
+                if (post_recAction["topic"] !== customTopic) {
+                    continue;
+                }
+            }
+
+            // find corresponding post in user's actions
+            let post_fpAction;
+            if (isResearchVersion) {
+                const post_ObjectID = await getObjectIDForPost(post_id);
+                post_fpAction = module_fpActions.find(action => action.post.equals(post_ObjectID));
+            } else {
+                // post_fpAction = module_fpActions.find(action => action.postID_num === parseInt(post_id));
+                const post_ObjectID = await getObjectIDForPost(post_id);
+                post_fpAction = module_fpActions.find(action => {
+                    if (action.postID === undefined) {
+                        return false;
+                    }
+                    const postID = new mongoose.mongo.ObjectId(action.postID['$oid']);
+                    return postID.equals(post_ObjectID);
+                });
+            }
+            if (post_fpAction === undefined) { // User did not conduct any actions on the post
+                continue;
+            }
+            // Checks to see if user left a comment on the post
+            if (post_recAction["commentOnPost"]) {
+                for (const commentObj of post_fpAction["comments"]) {
+                    if (commentObj["new_comment"]) { // code currently already doesn't allow a comment without text to be logged
+                        rec_act_FPCounts += 1;
+                        break; // only count 1 comment
+                    }
+                }
+            }
+
+            // Checks to see if user flagged the post
+            if (post_recAction["flagPost"]) {
+                rec_act_FPCounts += post_fpAction["flagged"] ? 1 : 0;
+            }
+
+            // Checks to see if user flagged comments
+            for (const commentIndex of post_recAction["flagComments"]) {
+                let comment;
+                if (isResearchVersion) {
+                    const comment_ObjectID = await getObjectIDForComment(post_id, commentIndex);
+                    comment = post_fpAction["comments"].find(commentObj => commentObj.comment !== undefined && commentObj.comment.equals(comment_ObjectID));
+                } else {
+                    // comment = post_fpAction["comments"].find(commentObj => commentObj.comment !== undefined && commentObj.comment_index === parseInt(commentIndex));
+                    const comment_ObjectID = await getObjectIDForComment(post_id, commentIndex);
+                    comment = post_fpAction["comments"].find(commentObj => {
+                        if (commentObj.comment === undefined) {
+                            return false;
+                        }
+                        const commentID = new mongoose.mongo.ObjectId(commentObj.comment['$oid']);
+                        return commentID.equals(comment_ObjectID);
+                    });
+                }
+                if (comment === undefined) { // User did not conduct any actions on the comment
+                    continue;
+                }
+                rec_act_FPCounts += comment["flagged"] ? 1 : 0;
+            }
+
+            // Checks to see if user conducted recommended actions on modals
+            for (var modalName in post_recAction["modals"]) {
+                const modal_recActions = post_recAction["modals"][modalName];
+
+                const modal_fpActions_reverse = post_fpAction["modal"].slice().reverse(); // make copy & reverse, so we consider the most recent open of the modal
+                const modal = modal_fpActions_reverse.find(modalObj => modalObj.modalName === modalName);
+
+                if (modal === undefined) { // User did not interact with modal
+                    continue;
+                }
+
+                for (var action in modal_recActions) {
+                    if (action === "modalCheckboxesInput") {
+                        const rec_num = parseInt(modal_recActions[action], 2);
+                        const fp_num = modal[action];
+                        rec_act_FPCounts += countSetBits(rec_num & fp_num);
+                    } else {
+                        rec_act_FPCounts += (modal_recActions[action] === modal[action]) ? 1 : 0;
+                    }
+                }
+            }
+        }
+    }
+
+    // only for digital-literacy module: add 1 to count if the user clicks articleInfoModal on any post 
+    // (this will include the 3 posts specified, which is why it is not included in the JSON file)
+    if (module_name === "digital-literacy") {
+        for (post of module_fpActions) {
+            const modal = post["modal"].find(modalObj => modalObj.modalName === "digital-literacy_articleInfoModal");
+
+            if (modal !== undefined) {
+                rec_act_FPCounts++;
+            }
+        }
+    }
+    return rec_act_FPCounts;
+};
+
+/*
+  Retrieves the (most recent) reflection answers from the user for the checkbox type questions 
+  in the module.
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - reflectionCheckboxAnswers: Object - object with properties giving reflection answers in binary form.
+    Ex: '0100' is a binary representation of the checkboxes for that question
+*/
+async function getReflectionCheckboxAnswers(user, module_name) {
+    const hasCheckboxType = await hasReflectionType(module_name, "checkbox");
+    const reflectionCheckboxAnswers = {
+        Q1: "",
+        Q2: "",
+        Q3: "",
+    };
+    let numberCorrect = (hasCheckboxType) ? 0 : "";
+
+    const reflectionSectionData = await getJsonFromFile("./TD-jsons/reflectionSectionData.json");
+
+    /* Example of reflectionAction 
+      absoluteTimeContinued: Date, //time that the user left the page by clicking continue
+      modual: String, //which lesson mod did this take place in?
+      questionNumber: String, // corresponds with reflectionSectionData.json, i.e. 'Q1', 'Q2', 'Q3'...
+      prompt: String,
+      type: String, // Which type of response this will be: written, checkbox, radio, habitsUnique
+      writtenResponse: String,
+      radioSelection: String, // this is for the presentation module
+      numberOfCheckboxes: Number,
+      checkboxResponse: Number,
+      checkedActualTime: Boolean, // this is unique to the habits module
+    */
+    // Skip responses on questions that are not from the specified module_name.
+    let mostRecentAttempt;
+    if (isResearchVersion) {
+        // Skip responses on questions that are not from the specified module_name.
+        const module_ReflectionAction = user.reflectionAction.filter(reflectionAction => reflectionAction.modual === module_name);
+        mostRecentAttempt = module_ReflectionAction[module_ReflectionAction.length - 1];
+    } else {
+        if (user.reflectionAnswers) {
+            mostRecentAttempt = user.reflectionAnswers[user.reflectionAnswers.length - 1];
+        } else {
+            mostRecentAttempt = user.reflectionAction[user.reflectionAction.length - 1];
+        }
+    }
+
+    if (!mostRecentAttempt) {
+        return [reflectionCheckboxAnswers, numberCorrect];
+    }
+
+    for (const reflectionResponse of mostRecentAttempt.answers) {
+        if (reflectionResponse["type"] !== "checkbox") {
+            continue;
+        }
+        const questionNumber = reflectionResponse.questionNumber;
+        const question = reflectionSectionData[module_name][questionNumber];
+        const checkboxResponse = reflectionResponse["checkboxResponse"].toString(2).padStart(reflectionResponse["numberOfCheckboxes"], '0');
+
+        if (question["type"] === "checkbox") {
+            // need to append tab in front, in order for any leading zeros to show up on Excel
+            reflectionCheckboxAnswers[questionNumber] = "\t" + checkboxResponse;
+
+            // Check correctness of checkbox answer
+            const correctCheckboxResponse = parseInt(Object.values(question["correctResponses"]).join(''), 2);
+            numberCorrect += countSetBits(correctCheckboxResponse & reflectionResponse["checkboxResponse"]);
+        } else if (question["type"] === "checkboxGrouped") {
+            const subquestionLength = reflectionResponse["numberOfCheckboxes"] / question["groupCount"];
+            const regex = new RegExp(`.{1,${subquestionLength}}`, 'g'); //splits the string into sections of length subquestionLength
+            reflectionCheckboxAnswers[questionNumber] = checkboxResponse.match(regex).join(", ");
+
+            // Check correctness of checkbox answer
+            let correctCheckboxResponse = "";
+            for (subquestion in question["correctResponses"]) {
+                correctCheckboxResponse += Object.values(question["correctResponses"][subquestion]).join('');
+            }
+            correctCheckboxResponse = parseInt(correctCheckboxResponse, 2);
+            numberCorrect += countSetBits(correctCheckboxResponse & reflectionResponse["checkboxResponse"]);
+        }
+    }
+    return [reflectionCheckboxAnswers, numberCorrect];
+}
+
+/*
+  Calculates key information relating to quiz section: the number of attempts on a quiz, if they 
+  checked quiz explanations, and the number of correct answers on each attempt. 
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - quizInformation: Object - object with properties representing the number of attempts on a quiz, if they 
+    checked quiz explanations, and the number of correct answers on each attempt. 
+*/
+function getQuizInformation(user, module_name) {
+    const quizInformation = {
+        numAttempts: 0,
+        checkQuiz: false,
+        numCorrect: []
+    };
+
+    let module_QuizAction;
+    if (isResearchVersion) {
+        // Skip responses on questions that are not from the specified module_name.
+        module_QuizAction = user.quizAction.filter(quizAction => quizAction.modual === module_name);
+        if (!user.viewQuizExplanations.filter(viewQuizExplanation => viewQuizExplanation.module === module_name && click === true)) {
+            quizInformation.checkQuiz = true;
+        }
+    } else {
+        if (user.quizAnswers) {
+            module_QuizAction = user.quizAnswers;
+        } else {
+            module_QuizAction = user.quizAction;
+        }
+        if (user.viewQuizExplanations) {
+            quizInformation.checkQuiz = true;
+        }
+    }
+    quizInformation.numAttempts = module_QuizAction.length;
+    quizInformation.numCorrect = module_QuizAction.map(quizAction => quizAction.numCorrect);
+
+    return quizInformation;
+}
+
+/*
+  Calculates the total time the voiceover is turned on. (Note: does not distinguihs between modules.)
+  Parameters:
+    - user: Object - the user data from one study participant.
+    - module_name: String - the module name to filter by.
+  Returns:
+    - sum: Number - how long the voiceover is turned on for
+*/
+function getVoiceoverTime(user, module_name) {
+    const sum = user.voiceoverTimer.reduce(function(a, b) { return a + b; }, 0);
+    const TimeInSeconds = Math.round(sum / 1000);
+    return TimeInSeconds;
+}
+
+async function getDataExport() {
+    const users = await getUserJsons();
+
+    console.log(color_start, `Starting the data export script...`);
+    const currentDate = new Date();
+    const outputFilename =
+        ((!isResearchVersion) ? `calculated-publicTestDrive-dataExport` : `calculated-researchTestDrive-dataExport`) +
+        `.${currentDate.getMonth()+1}-${currentDate.getDate()}-${currentDate.getFullYear()}` +
+        `.${currentDate.getHours()}-${currentDate.getMinutes()}-${currentDate.getSeconds()}`;
+    const outputFilepath = `./${outputFilename}.csv`;
+    const csvWriter_header = [
+        { id: 'module_name', title: "Module_Name" },
+        { id: 'time_spent_tt', title: 'Time_Spent_TT (in seconds)' },
+        { id: 'time_spent_ga', title: 'Time_Spent_GA (in seconds)' },
+        { id: 'time_spent_fp', title: 'Time_Spent_FP (in seconds)' },
+        { id: 'time_spent_rf', title: 'Time_Spent_RF (in seconds)' },
+        { id: 'ga_to_tt', title: 'GA_to_TT' },
+        { id: 'fp_to_tt', title: 'FP_to_TT' },
+        { id: 'rf_to_tt', title: 'RF_to_TT' },
+        { id: 'fp_to_ga', title: 'FP_to_GA' },
+        { id: 'rf_to_ga', title: 'RF_to_GA' },
+        { id: 'rf_to_fp', title: 'RF_to_FP' },
+        { id: 'back_tt', title: 'Back_TT' },
+        { id: 'rec_act_ga', title: 'Rec_act_GA' },
+        { id: 'liked_post_fp', title: 'Liked_post_FP' },
+        { id: 'flagged_post_fp', title: 'Flagged_post_FP' },
+        { id: 'commented_post_fp', title: 'Commented_post_FP' },
+        { id: 'rec_act_fp', title: 'Rec_act_FP' },
+        { id: 'checkbox_rf', title: 'Checkbox_RF' },
+        { id: 'radio_rf', title: 'Radio_RF' },
+        { id: 'open_ended_rf', title: 'Open_ended_ RF' },
+        { id: 'habitsTimeCheck_rf', title: 'Habits_Timecheck_RF (unique to Habits module)' },
+        { id: 'checkbox_q1', title: 'Checkbox_Q1' },
+        { id: 'checkbox_q2', title: 'Checkbox_Q2' },
+        { id: 'checkbox_q3', title: 'Checkbox_Q3' },
+        { id: 'correct_checkbox_rf', title: 'Num_Correct_Checkbox_RF' },
+        { id: 'attempts_quiz', title: 'Num_Attempts_Quiz' },
+        { id: 'check_quiz', title: 'Check_Explanations_Quiz' },
+        { id: 'correct_quiz_1', title: 'Num_Correct_Quiz_Attempt1' },
+        { id: 'correct_quiz_2', title: 'Num_Correct_Quiz_Attempt2' },
+        { id: 'correct_quiz_3', title: 'Num_Correct_Quiz_Attempt3' },
+        { id: 'voiceover_time', title: 'Voiceover_Time (in seconds)' },
+    ]
+    if (isResearchVersion) {
+        csvWriter_header = csvWriter_header.concat([
+            { id: 'class_name', title: 'Class_Name' },
+            { id: 'access_code', title: 'Access_Code' },
+            { id: 'username', title: 'Username' },
+        ])
+    }
+    const csvWriter = createCsvWriter({
+        path: outputFilepath,
+        header: csvWriter_header
+    });
+    const records = [];
+    // For each record or student
+    for (const user of users) {
+        // if (isResearchVersion) {
+        //     const accessCode = user.accessCode;
+        //     // STUDY ACCESS CODES:
+        //     const study_accessCodes = []; // TODO: Add access codes of classes in the study
+        //     // only do a data export of students in specified study
+        //     if (!study_accessCodes.includes(accessCode)) {
+        //         continue;
+        //     }
+        // }
+        if (!user.pageLog) {
+            continue;
+        }
+        const modules = ["cyberbullying", "digfoot", "digital-literacy", "targeted", "phishing", "esteem"];
+        if (!modules.includes(user.module)) {
+            continue
+        }
+        // Check if the user has been assigned modules (usually 4 modules total)
+        const numOfAssignedModules = (isResearchVersion && user.assignedModules) ? user.assignedModules.length : 12;
+        for (let i = 0; i < (isResearchVersion ? numOfAssignedModules : 1); i++) {
+            const record = {};
+
+            if (isResearchVersion) {
+                record.class_name = await getClassNameForUser(user);
+                record.username = user.username;
+                record.access_code = user.accessCode
+            }
+
+            const assignedModule = (isResearchVersion) ? ((user.assignedModules) ? user.assignedModules[`module${i+1}`] : Object.keys(user.moduleProgress)[i]) : user.module;
+            const sectionInformation = await getSectionInformation(user, assignedModule);
+            if (assignedModule !== "accounts" && assignedModule !== "privacy") {
+                const activityCounts = getActivityCountsFP(user, assignedModule);
+                record.liked_post_fp = activityCounts.likeCount;
+                record.flagged_post_fp = activityCounts.flagCount;
+                record.commented_post_fp = activityCounts.commentCount;
+            }
+            const reflectionAttemptCounts = await getReflectionAttemptCounts(user, assignedModule);
+            const back_TTCounts = getback_TTCounts(user, assignedModule);
+            const rec_act_GACounts = await getrec_act_GACounts(user, assignedModule);
+            const rec_act_FPCounts = await getrec_act_FPCounts(user, assignedModule);
+            const [reflectionCheckboxAnswers, numberCorrect] = await getReflectionCheckboxAnswers(user, assignedModule);
+            const quizInformation = getQuizInformation(user, assignedModule);
+            const voiceoverTime = getVoiceoverTime(user, assignedModule);
+
+            record.module_name = assignedModule;
+            record.time_spent_tt = sectionInformation.timeSpent.tt;
+            record.time_spent_ga = sectionInformation.timeSpent.ga;
+            record.time_spent_fp = sectionInformation.timeSpent.fp;
+            record.time_spent_rf = sectionInformation.timeSpent.rf;
+            record.ga_to_tt = sectionInformation.jumpFrequency.ga_to_tt.count;
+            record.fp_to_tt = sectionInformation.jumpFrequency.fp_to_tt.count;
+            record.rf_to_tt = sectionInformation.jumpFrequency.rf_to_tt.count;
+            record.fp_to_ga = sectionInformation.jumpFrequency.fp_to_ga.count;
+            record.rf_to_ga = sectionInformation.jumpFrequency.rf_to_ga.count;
+            record.rf_to_fp = sectionInformation.jumpFrequency.rf_to_fp.count;
+            record.back_tt = back_TTCounts;
+            record.rec_act_ga = rec_act_GACounts;
+            record.rec_act_fp = rec_act_FPCounts;
+            record.checkbox_rf = reflectionAttemptCounts.checkbox_rf;
+            record.open_ended_rf = reflectionAttemptCounts.open_ended_rf;
+            record.radio_rf = reflectionAttemptCounts.radio_rf;
+            record.checkbox_q1 = reflectionCheckboxAnswers.Q1;
+            record.checkbox_q2 = reflectionCheckboxAnswers.Q2;
+            record.checkbox_q3 = reflectionCheckboxAnswers.Q3;
+            record.correct_checkbox_rf = numberCorrect;
+            record.attempts_quiz = quizInformation.numAttempts;
+            record.check_quiz = quizInformation.checkQuiz;
+            record.correct_quiz_1 = quizInformation.numCorrect[0];
+            record.correct_quiz_2 = quizInformation.numCorrect[1];
+            record.correct_quiz_3 = quizInformation.numCorrect[2];
+            record.voiceover_time = voiceoverTime;
+
+            if (assignedModule === "habits") {
+                const reflectionAction = user.reflectionAction || user.reflectionAnswers;
+                if (reflectionAction[reflectionAction.length - 1]) {
+                    record.habitsTimeCheck_rf = reflectionAction[reflectionAction.length - 1]["answers"].find(answer => answer.questionNumber === "Q2")["checkedActualTime"];
+                }
+            }
+            records.push(record);
+        }
+    }
+    await csvWriter.writeRecords(records);
+    console.log(color_success, `...Data export completed.\nFile exported to: ${outputFilepath} with ${records.length} records.`);
+    // if (isResearchVersion) {
+    db.close();
+    console.log(color_start, 'Closed db connection.');
+    // }
+}
+
+getDataExport();

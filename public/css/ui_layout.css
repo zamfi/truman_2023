@@ -67,6 +67,13 @@ button {
     vertical-align: middle;
 }
 
+.ui.mini.image {
+    height: 35px;
+}
+
+
+/*Page Container*/
+
 #pagecontainer {
     padding-top: 50px;
     justify-content: center;

@@ -1,36 +1,24 @@
 extends ui_layout
 
 block content
-
   .sixteen.wide.column 
-    br
     table.ui.celled.padded.table
       thead
         tr
           th.single.line E-mail
-          th ID
-          th Start Date
-          th Group
+          th Prolific ID
+          th Start Date (ET)
           th Completed?
-          th Day 1
-          th Day 2
-          th Day 3
-          th Number of Logins
-          th Posts
-          th Replies
+          th Approximate total time on site
+          th # of Posts
+          th # of Comments
       each u in users
         tbody
           tr
             td=u.email
             td.single.line=u.mturkID
-            td=u.createdAt
-            td=u.group
+            td=u.createdAt.toLocaleString("en-US", {timeZone: "America/New_York"})
             td=u.completed
-            td=u.study_days[0]
-            td=u.study_days[1]
-            td=u.log.length 
+            td=Math.round((u.pageTimes[0] + u.pageTimes[1])/1000/60)+" minutes"
             td=u.numPosts + 1
             td=u.numComments + 1
-    br
-    br
-    br

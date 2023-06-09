@@ -2,69 +2,78 @@
 $('#content').hide();
 $('#loading').show();
 
+//Called when inactive and when page unloads
+//Function calculates duration of activity and adds to sum in the database.
+function addPageTime() {
+    const startTime = window.sessionStorage.getItem('startDate');
+    if (startTime !== 'null' && window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
+        const timeDuration = Date.now() - startTime;
+        $.post("/pageTimes", {
+            time: timeDuration,
+            _csrf: $('meta[name="csrf-token"]').attr('content')
+        }).then(function() {
+            window.sessionStorage.setItem('startDate', 'null');
+        }).catch(function(err) {
+            console.log(err);
+        });
+
+    }
+}
+
 $(window).on("load", function() {
+    var timeout = null; //Timer used for tracking user activity. Initialized to null. 
+    window.sessionStorage.setItem('startDate', 'null');
+
+    //Definition of an active user: mouse movement, clicks etc. If they haven't done it in 1 minute, we stop the timer and record the time.
+    $('#pagegrid').on('mousemove click mouseup mousedown keydown keypress keyup submit change mouseenter scroll resize dblclick mousewheel', function() {
+        //If there hasn't been a "start time" for activity, set it.We use session storage so we can track activity when pages changes too.
+        if (window.sessionStorage.getItem('startDate') == 'null') {
+            window.sessionStorage.setItem('startDate', Date.now());
+        }
+        clearTimeout(timeout);
+        timeout = setTimeout(function() {
+            console.log('Mouse idle for 60 sec');
+            addPageTime();
+        }, 60000);
+    });
+
+    //add humanized time to all posts
+    $('.right.floated.time.meta, .date').each(function() {
+        var ms = parseInt($(this).text(), 10);
+        let time = new Date(ms);
+        $(this).text(humanized_time_span(time));
+    });
+
     //close loading dimmer on load
     $('#loading').hide();
     $('#content').attr('style', 'block');
     $('#content').fadeIn('slow');
-    //Semantic UI: closes messages from flash message
+
+    //Semantic UI: function for closing messages
     $('.message .close').on('click', function() {
         $(this).closest('.message').transition('fade');
     });
+    //Semantic UI: function to make checkbox work
+    $('.ui.checkbox').checkbox();
 
-    //check bell display (and make red if there are notifications)
-    if (!(top.location.pathname === '/login' || top.location.pathname === '/signup')) {
-        $.getJSON("/bell", function(json) {
-            if (json.result) {
-                $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
-            }
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
+        $.post("/pageLog", {
+            path: window.location.pathname,
+            _csrf: $('meta[name="csrf-token"]').attr('content')
         });
-    }
+        if (window.location.pathname !== '/notifications') {
+            setInterval(function() {
+                // method to be executed;
+                $.getJSON("/notifications", { bell: true }, function(json) {
+                    if (json.count != 0) {
+                        $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
+                    }
+                });
+            }, 5000);
+        }
+    };
 
-    //make checkbox work
-    $('.ui.checkbox')
-        .checkbox();
-
-    $('.ui.tiny.post.modal').modal({
-        observeChanges: true
-    });
-
-    //get add new feed post modal to work
-    $("#newpost, a.item.newpost").click(function() {
-        $('.ui.tiny.post.modal').modal('show');
-    });
-
-    //new post validator (picture and text can not be empty)
-    $('#postform')
-        .form({
-            on: 'blur',
-            fields: {
-                body: {
-                    identifier: 'body',
-                    rules: [{
-                        type: 'empty',
-                        prompt: 'Please add some text about your meal.'
-                    }]
-                },
-                picinput: {
-                    identifier: 'picinput',
-                    rules: [{
-                        type: 'notExactly[/public/photo-camera.svg]',
-                        prompt: 'Please click on the Camera Icon to add a photo.'
-                    }]
-                }
-            },
-            onSuccess: function(event, fields) {
-                $("#postform")[0].submit();
-            }
-
-        });
-
-    $('#postform').submit(function(e) {
-        e.preventDefault();
-    });
-
-    //Picture Preview on Image Selection
+    //Picture Preview on Image Selection (Used for: uploading new post, updating profile)
     function readURL(input) {
         if (input.files && input.files[0]) {
             var reader = new FileReader();
@@ -79,15 +88,8 @@ $(window).on("load", function() {
         readURL(this);
     });
 
-    //add humanized time to all posts
-    $('.right.floated.time.meta, .date').each(function() {
-        var ms = parseInt($(this).text(), 10);
-        let time = new Date(ms);
-        $(this).text(humanized_time_span(time));
-    });
-
     //Button to go to feed
-    $('.ui.big.green.labeled.icon.button.feed').on('click', function() {
+    $('.ui.big.green.labeled.icon.button.feed, .ui.home.inverted.button').on('click', function() {
         window.location.href = '/';
     });
 
@@ -96,171 +98,93 @@ $(window).on("load", function() {
         window.location.href = '/account';
     });
 
-    //this is the REPORT User button
-    $('button.ui.button.report').on('click', function() {
-        var username = $(this).attr("username");
-        $('.ui.small.report.modal').modal('show');
-        $('.coupled.modal').modal({
-            allowMultiple: false
-        });
-        // attach events to buttons
-        $('.second.modal').modal('attach events', '.report.modal .button');
-        // show first now
-        $('.ui.small.report.modal').modal('show');
-    });
-
-    //Report User Form
-    $('form#reportform').submit(function(e) {
-        e.preventDefault();
-        $.post($(this).attr('action'), $(this).serialize(), function(res) {
-            // Do something with the response `res`
-            //console.log(res);
-            // Don't forget to hide the loading indicator!
-        });
-        //return false; // prevent default action
-    });
-
-    $('.ui.home.inverted.button').on('click', function() {
-        window.location.href = '/';
-    });
-
-    //this is the Block User button
-    $('button.ui.button.block').on('click', function() {
-        var username = $(this).attr("username");
-        //Modal for Blocked Users
-        $('.ui.small.basic.blocked.modal')
-            .modal({
-                closable: false,
-                onDeny: function() {
-                    //report user
-
-                },
-                onApprove: function() {
-                    //unblock user
-                    $.post("/user", { unblocked: username, _csrf: $('meta[name="csrf-token"]').attr('content') });
-                }
-            })
-            .modal('show');
-        //console.log("***********Block USER "+username);
-        $.post("/user", { blocked: username, _csrf: $('meta[name="csrf-token"]').attr('content') });
-
-    });
-
-    //Block Modal for User that is already Blocked
-    $('.ui.on.small.basic.blocked.modal').modal({
-            closable: false,
-            onDeny: function() {
-                //report user
-            },
-            onApprove: function() {
-                //unblock user
-                var username = $('button.ui.button.block').attr("username");
-                $.post("/user", { unblocked: username, _csrf: $('meta[name="csrf-token"]').attr('content') });
-            }
-        })
-        .modal('show');
-
-    //this is the "yes" button when responding to the content moderation question
-    $('.agree').on('click', function() {});
-
-    //this is the "no" button when responding to the content moderation question
-    $('.disagree')
-        .on('click', function() {});
-
-    //this is the "view policy" button after responding to the content moderation question
-    $('.modInfo')
-        .on('click', function() {});
-
-    //this is the "no, don't view policy" button after responding to the content moderation question
-    $('.noModInfo')
-        .on('click', function() {});
-
-    //adding animations to the moderation comment
-    $('.ui.info.message').visibility({
+    // Track how long a post is on the screen (borders are defined by image)
+    // Start time: When the entire photo is visible in the viewport .
+    // End time: When the entire photo is no longer visible in the viewport.
+    $('.ui.fluid.card .img.post').visibility({
         once: false,
         continuous: false,
         observeChanges: true,
         //throttle:100,
         initialCheck: true,
+        offset: 50,
 
-        onBottomVisible: function(calculations) {
-            if ($(this).is(':visible')) {
-                $(this).transition('pulse');
+        //Handling scrolling down like normal
+        //Called when bottomVisible turns true (bottom of a picture is visible): bottom can enter from top or bottom of viewport
+        onBottomVisible: function(element) {
+            var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
+            // Bottom of picture enters from bottom (scrolling down the feed; as normal)
+            if (element.topVisible) { // Scrolling Down AND entire post is visible on the viewport 
+                // If this is the first time bottom is visible
+                if (startTime == 0) {
+                    var startTime = Date.now();
+                }
+            } else { //Scrolling up and this event does not matter, since entire photo isn't visible anyways.
+                var startTime = 0;
             }
-        }
-    });
+            $(this).siblings(".content").children(".myTimer").text(startTime);
+        },
 
-    //////TESTING
-    $('.ui.fluid.card .img.post')
-        .visibility({
-            once: false,
-            continuous: false,
-            observeChanges: true,
-            //throttle:100,
-            initialCheck: true,
+        //Element's bottom edge has passed top of the screen (disappearing); happens only when Scrolling Up
+        onBottomPassed: function(element) {
+            var endTime = Date.now();
+            var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
+            var totalViewTime = endTime - startTime; //TOTAL TIME HERE
 
-            //handling scrolling down like normal
-            onBottomVisible: function(calculations) {
+            var parent = $(this).parents(".ui.fluid.card");
+            var postID = parent.attr("postID");
+            var postClass = parent.attr("postClass");;
+            // If user viewed it for less than 24 hours, but more than 1.5 seconds (just in case)
+            if (totalViewTime < 86400000 && totalViewTime > 1500 && startTime > 0) {
+                $.post("/feed", {
+                    postID: postID,
+                    viewed: totalViewTime,
+                    postClass: postClass,
+                    _csrf: $('meta[name="csrf-token"]').attr('content')
+                });
+                // Reset Timer
+                $(this).siblings(".content").children(".myTimer").text(0);
+            }
+        },
+
+        //Handling scrolling up
+        //Element's top edge has passed top of the screen (appearing); happens only when Scrolling Up
+        onTopPassedReverse: function(element) {
+            var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
+            if (element.bottomVisible && startTime == 0) { // Scrolling Up AND entire post is visible on the viewport 
                 var startTime = Date.now();
                 $(this).siblings(".content").children(".myTimer").text(startTime);
-                if (calculations.topVisible) { //then we are scrolling DOWN normally and this is the START time
-                    $(this).siblings(".content").children(".myTimer").text(startTime);
-                } else { //then we are scrolling UP and this event does not matter!
-                }
-            },
+            }
+        },
 
-            onTopPassed: function(calculations) {
+        // Called when topVisible turns false (exits from top or bottom)
+        onTopVisibleReverse: function(element) {
+            if (element.topPassed) { //Scrolling Down, disappears on top; this event doesn't matter (since it is when bottom disappears that time is stopped)
+            } else { // False when Scrolling Up (the bottom of photo exits screen.)
                 var endTime = Date.now();
                 var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
-                var totalViewTime = endTime - startTime; //TOTAL TIME HERE
-                //POST HERE
+                var totalViewTime = endTime - startTime;
+
                 var parent = $(this).parents(".ui.fluid.card");
                 var postID = parent.attr("postID");
-                //console.log(postID);
-                //Don't record it if it's longer than 24 hours, do this check because refresh causes all posts to be marked as "viewed" for 49 years.(???)
-                if (totalViewTime < 86400000) {
+                var postClass = parent.attr("postClass");;
+                // If user viewed it for less than 24 hours, but more than 1.5 seconds (just in case)
+                if (totalViewTime < 86400000 && totalViewTime > 1500 && startTime > 0) {
                     $.post("/feed", {
                         postID: postID,
                         viewed: totalViewTime,
+                        postClass: postClass,
                         _csrf: $('meta[name="csrf-token"]').attr('content')
                     });
+                    // Reset Timer
+                    $(this).siblings(".content").children(".myTimer").text(0);
                 }
-                //console.log("Total time: " + totalViewTime);
-                //console.log($(this).siblings(".content").children(".description").text());
-            },
-            //end handling downward scrolling
-
-            //handling scrolling back upwards
-            onTopPassedReverse: function(calculations) {
-                var startTime = Date.now();
-                $(this).siblings(".content").children(".myTimer").text(startTime);
-            },
-
-            onBottomVisibleReverse: function(calculations) {
-                if (calculations.bottomPassed) {
-
-                } else {
-                    //eND TIME FOR SCROLLING UP
-                    var endTime = Date.now();
-                    var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
-                    var totalViewTime = endTime - startTime; //TOTAL TIME HERE
-                    //POST HERE
-                    var parent = $(this).parents(".ui.fluid.card");
-                    var postID = parent.attr("postID");
-                    //console.log("PostID: " + postID);
-                    //console.log(postID);
-                    //Don't record it if it's longer than 24 hours, do this check because refresh causes all posts to be marked as "viewed" for 49 years. (???)
-                    if (totalViewTime < 86400000) {
-                        $.post("/feed", {
-                            postID: postID,
-                            viewed: totalViewTime,
-                            _csrf: $('meta[name="csrf-token"]').attr('content')
-                        });
-                    }
-                    //console.log("Total time: " + totalViewTime);
-                    //console.log($(this).siblings(".content").children(".description").text());
-                }
-                //end handling scrolling back updwards
             }
-        });
+        }
+    });
+});
+
+$(window).on("beforeunload", function() {
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event
+    addPageTime();
 });

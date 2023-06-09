@@ -2,7 +2,7 @@ extends ui_layout
 
 block content
   .ui.text.container(style="margin-top: 2em; margin-bottom: 2em;")
-    h1 Welcome to EatSnap.Love!
+    h1(style="text-align: center;") Welcome to EatSnap.Love!
     h3 Here's what you can do on the site.
     ul
         li Create new posts! Upload existing photos or take new photos with your phone.
@@ -12,12 +12,12 @@ block content
         li When the Notification Bell is red, that means you have new Notifications, be sure to check them out!
     img.ui.centered.image(src='/public/esl-howto.png')
     h3 See who else is around.
-    p We'll notify you if someone replies to or likes your post.
+    p We'll notify you if someone replies to or likes your post or comment.
     .ui.big.green.labeled.icon.button.interest
         i.rocket.icon
         |   Continue
 
     script.
         $('.ui.big.green.labeled.icon.button.interest').on('click', function() {
-            window.location.href = '/account/interest';
+            window.location.href = '/';
         });
