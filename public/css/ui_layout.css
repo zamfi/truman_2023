@@ -7,40 +7,28 @@ body {
     display: none;
 }
 
-.ui.menu .item img.logo {
-    margin-left: 3.5em;
+a,
+button,
+.ui.button {
+    cursor: pointer;
 }
+
+
+/* Header CSS */
 
 .ui.menu .item>i.icon {
     margin: 0 !important;
 }
 
-a {
-    cursor: pointer;
-}
 
-button {
-    cursor: pointer;
-}
-
-.ui.button {
-    cursor: pointer;
-}
+/*Other*/
 
 #newpost.ui.fluid.left.labeled.right.icon.input {
     cursor: pointer;
 }
 
-.main.container {
-    margin-top: 5em;
-}
-
 .ui.fluid.card>.content>.description {
     font-size: 1.05em;
-}
-
-.wireframe {
-    margin-top: 2em;
 }
 
 

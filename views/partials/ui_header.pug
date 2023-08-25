@@ -1,9 +1,8 @@
 .computer.only.tablet.only.row 
   .ui.borderless.fixed.menu
     .ui.container
-      if user
-      a.item(href= user===undefined ? '/' : (user.consent ? "/": "#"))#headerHomeButton
-        img.ui.tiny.image(src='/public/logo.png', id='logo')
+      a.item(href= user===undefined ? '/' : (user.consent ? "/": "#"))
+        img.ui.tiny.image(src=site_logo, id='logo')
       .right.menu
         if !user
           a.item(href='/login') Log In
@@ -17,7 +16,7 @@
               i.big.alarm.icon
           .ui.simple.dropdown.item
             if user.profile.picture
-              img.ui.mini.spaced.circular.image(src='/user_post/'+user.profile.picture)
+              img.ui.mini.spaced.circular.image(src='/user_avatar/'+user.profile.picture)
             else
               img.ui.mini.spaced.circular.image(src=user.gravatar(60))
             |
@@ -29,12 +28,13 @@
                 a.item(href='/account') Update My Profile
                 if user.isAdmin
                   a.item(href='/completed') Study Progress
-                a.item(href='/com?feed=true') View Community Rules
+                  a.item(href='/actors') Simulation (Actors)
+                a.item(href='/com') View Community Rules
               a.item(href='/logout') Log Out
 .mobile.only.row
   .ui.fluid.top.fixed.four.item.menu
-    a.item(href=user===undefined ? '/' : (user.consent ? "/": "#"))#headerHomeButton
-      img.ui.tiny.image(src='/public/logo.png', id='cell_logo')
+    a.item(href=user===undefined ? '/' : (user.consent ? "/": "#"))
+      img.ui.tiny.image(src=site_logo, id='mobile_logo')
     if !user
       a.item(href='/login') Log In
       a.item(href='/signup') Create Account
@@ -50,7 +50,7 @@
         .item
       .ui.simple.dropdown.item
         if user.profile.picture
-          img.ui.mini.spaced.circular.image(src='/user_post/'+user.profile.picture)
+          img.ui.mini.spaced.circular.image(src='/user_avatar/'+user.profile.picture)
         else
           img.ui.mini.spaced.circular.image(src=user.gravatar(60))
         i.dropdown.icon
@@ -60,5 +60,6 @@
             a.item(href='/account') Update My Profile
             if user.isAdmin
               a.item(href='/completed') Study Progress
-            a.item(href='/com?feed=true') View Community Rules
+              a.item(href='/actors') Simulation (Actors)
+            a.item(href='/com') View Community Rules
           a.item(href='/logout') Log Out

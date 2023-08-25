@@ -2,7 +2,7 @@ function likePost(e) {
     const target = $(e.target).closest('.ui.like.button');
     const label = target.closest('.ui.like.button').next("a.ui.basic.red.left.pointing.label.count");
     const postID = target.closest(".ui.fluid.card").attr("postID");
-    const postClass = target.closest(".ui.fluid.card").attr("postClass");
+    const postClass = target.closest(".ui.fluid.card").hasClass("adPost") ? "Ad" : "Normal";
 
     if (target.hasClass("red")) { //Unlike Post
         target.removeClass("red");
@@ -47,7 +47,7 @@ function flagPost(e) {
     const target = $(e.target);
     const post = target.closest(".ui.fluid.card.dim");
     const postID = post.attr("postID");
-    const postClass = post.attr("postClass");
+    const postClass = post.hasClass("adPost") ? "Ad" : "Normal";
     const flag = Date.now();
 
     $.post("/feed", {
@@ -67,7 +67,7 @@ function likeComment(e) {
     const label = comment.find("span.num");
 
     const postID = target.closest(".ui.fluid.card").attr("postID");
-    const postClass = target.closest(".ui.fluid.card").attr("postClass");
+    const postClass = target.closest(".ui.fluid.card").hasClass("adPost") ? "Ad" : "Normal";
     const commentID = comment.attr("commentID");
     const isUserComment = comment.find("a.author").attr('href') === '/me';
 
@@ -127,7 +127,7 @@ function flagComment(e) {
     const target = $(e.target);
     const comment = target.parents(".comment");
     const postID = target.closest(".ui.fluid.card").attr("postID");
-    const postClass = target.closest(".ui.fluid.card").attr("postClass");;
+    const postClass = target.closest(".ui.fluid.card").hasClass("adPost") ? "Ad" : "Normal";
     const commentID = comment.attr("commentID");
     comment.replaceWith(`
         <div class="comment" commentID="${commentID}" style="background-color:black;color:white">
@@ -154,7 +154,7 @@ function addComment(e) {
     const text = target.siblings(".ui.form").find("textarea.newcomment").val().trim();
     const card = target.parents(".ui.fluid.card");
     let comments = card.find(".ui.comments");
-    const postClass = target.parents(".ui.fluid.card").attr("postClass");;
+    const postClass = target.parents(".ui.fluid.card").hasClass("adPost") ? "Ad" : "Normal";
     //no comments area - add it
     if (!comments.length) {
         const buttons = card.find(".ui.bottom.attached.icon.buttons")
@@ -214,7 +214,7 @@ function followUser(e) {
     const target = $(e.target);
     const username = target.attr('actor_un');
     if (target.text().trim() == "Follow") { //Follow Actor
-        $(`.ui.basic.primary.follow.button[actor_un=${username}]`).each(function(i, element) {
+        $(`.ui.basic.primary.follow.button[actor_un='${username}']`).each(function(i, element) {
             const button = $(element);
             button.text("Following");
             button.prepend("<i class='check icon'></i>");
@@ -224,7 +224,7 @@ function followUser(e) {
             _csrf: $('meta[name="csrf-token"]').attr('content')
         })
     } else { //Unfollow Actor
-        $(`.ui.basic.primary.follow.button[actor_un=${username}]`).each(function(i, element) {
+        $(`.ui.basic.primary.follow.button[actor_un='${username}']`).each(function(i, element) {
             const button = $(element);
             button.text("Follow");
             button.find('i').remove();

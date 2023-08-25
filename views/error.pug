@@ -1,6 +1,6 @@
 extends ui_layout
 
 block content
-  h1= message
-  h2= error.status
-  pre #{error.stack}
+  .sixteen.wide.column(style="margin-top: 2em; margin-bottom: 2em;")
+    h1 Oops! !{error.status + " " + message}
+    p #{error.stack}

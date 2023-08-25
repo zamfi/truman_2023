@@ -19,5 +19,12 @@ block content
 
     script.
         $('.ui.big.green.labeled.icon.button.interest').on('click', function() {
-            window.location.href = '/';
+            $(this).addClass('loading disabled');
+            $.post("/account/consent", {
+                    _csrf: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(json) {
+                    if (json["result"] === "success") {
+                        window.location.href = '/'
+                    }
+                });
         });

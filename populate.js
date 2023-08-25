@@ -2,7 +2,7 @@ const color_start = '\x1b[33m%s\x1b[0m'; // yellow
 const color_success = '\x1b[32m%s\x1b[0m'; // green
 const color_error = '\x1b[31m%s\x1b[0m'; // red
 
-console.log(color_start, 'Started populate.js script ');
+console.log(color_start, 'Started populate.js script...');
 
 var async = require('async');
 var Actor = require('./models/Actor.js');
@@ -122,8 +122,8 @@ async function doPopulate() {
     }).then(function(result) {
         console.log(color_start, "Starting to populate actors collection...");
         return new Promise((resolve, reject) => {
-            async.each(actors_list, function(actor_raw, callback) {
-                    var actordetail = {
+            async.each(actors_list, async function(actor_raw, callback) {
+                    const actordetail = {
                         username: actor_raw.username,
                         profile: {
                             name: actor_raw.name,
@@ -136,16 +136,13 @@ async function doPopulate() {
                         class: actor_raw.class
                     };
 
-                    var actor = new Actor(actordetail);
-                    actor.save(function(err) {
-                        if (err) {
-                            console.log(color_error, "ERROR: Something went wrong with saving actor in database");
-                            console.log(err);
-                            return -1;
-                        }
-                        // console.log('Saved New Actor: ' + actor.username);
-                        callback();
-                    });
+                    const actor = new Actor(actordetail);
+                    try {
+                        await actor.save();
+                    } catch (err) {
+                        console.log(color_error, "ERROR: Something went wrong with saving actor in database");
+                        next(err);
+                    }
                 },
                 function(err) {
                     if (err) {
@@ -166,38 +163,30 @@ async function doPopulate() {
     }).then(function(result) {
         console.log(color_start, "Starting to populate posts collection...");
         return new Promise((resolve, reject) => {
-            async.each(posts_list, function(new_post, callback) {
-                    Actor.findOne({ username: new_post.actor }, (err, act) => {
-                        if (err) {
-                            console.log(color_error, "ERROR: Something went wrong with finding actor in database");
-                            console.log(err);
-                            return;
+            async.each(posts_list, async function(new_post, callback) {
+                    const act = await Actor.findOne({ username: new_post.actor }).exec();
+                    if (act) {
+                        const postdetail = {
+                            postID: new_post.id,
+                            body: new_post.body,
+                            picture: new_post.picture,
+                            likes: getLikes(),
+                            actor: act,
+                            time: timeStringToNum(new_post.time) || null,
+                            class: new_post.class
                         }
-                        if (act) {
-                            var postdetail = {
-                                postID: new_post.id,
-                                body: new_post.body,
-                                picture: new_post.picture,
-                                likes: getLikes(),
-                                actor: act,
-                                time: timeStringToNum(new_post.time) || null,
-                                class: new_post.class
-                            }
 
-                            var script = new Script(postdetail);
-                            script.save(function(err) {
-                                if (err) {
-                                    console.log(color_error, "ERROR: Something went wrong with saving post in database");
-                                    callback(err);
-                                }
-                                // console.log('Saved New Post: ' + script.postID);
-                                callback();
-                            });
-                        } else { //Else no actor found
-                            console.log(color_error, "ERROR: Actor not found in database");
-                            callback();
+                        const script = new Script(postdetail);
+                        try {
+                            await script.save();
+                        } catch (err) {
+                            console.log(color_error, "ERROR: Something went wrong with saving post in database");
+                            next(err);
                         }
-                    });
+                    } else { //Else no actor found
+                        console.log(color_error, "ERROR: Actor not found in database");
+                        callback();
+                    };
                 },
                 function(err) {
                     if (err) {
@@ -218,41 +207,33 @@ async function doPopulate() {
     }).then(function(result) {
         console.log(color_start, "Starting to populate notifications (replies) collection...");
         return new Promise((resolve, reject) => {
-            async.each(notification_reply_list, function(new_notify, callback) {
-                    Actor.findOne({ username: new_notify.actor }, (err, act) => {
-                        if (err) {
-                            console.log(color_error, "ERROR: Something went wrong with finding actor in database");
-                            console.log(err);
-                            return;
-                        }
-                        if (act) {
-                            var notifydetail = {
-                                actor: act,
-                                notificationType: 'reply',
-                                time: timeStringToNum(new_notify.time),
-                                userPost: new_notify.userPostID,
-                                replyBody: new_notify.body
-                            };
+            async.each(notification_reply_list, async function(new_notify, callback) {
+                    const act = await Actor.findOne({ username: new_notify.actor }).exec();
+                    if (act) {
+                        const notifydetail = {
+                            actor: act,
+                            notificationType: 'reply',
+                            time: timeStringToNum(new_notify.time),
+                            userPost: new_notify.userPostID,
+                            replyBody: new_notify.body
+                        };
 
-                            var notify = new Notification(notifydetail);
-                            notify.save(function(err) {
-                                if (err) {
-                                    console.log(color_error, "ERROR: Something went wrong with saving notification(reply) in database");
-                                    callback(err);
-                                }
-                                // console.log('Saved New Notification(reply): ' + new_notify.id);
-                                callback();
-                            });
-                        } else { //Else no actor found
-                            console.log(color_error, "ERROR: Actor not found in database");
-                            callback();
+                        const notify = new Notification(notifydetail);
+                        try {
+                            await notify.save();
+                        } catch (err) {
+                            console.log(color_error, "ERROR: Something went wrong with saving notification(reply) in database");
+                            console.log(err);
+                            next(err);
                         }
-                    });
+                    } else { //Else no actor found
+                        console.log(color_error, "ERROR: Actor not found in database");
+                        callback();
+                    }
                 },
                 function(err) {
                     if (err) {
                         console.log(color_error, "ERROR: Something went wrong with saving notifications(replies) in database");
-                        callback(err);
                     }
                     // Return response
                     console.log(color_success, "All notifications(replies) added to database!")
@@ -268,42 +249,34 @@ async function doPopulate() {
     }).then(function(result) {
         console.log(color_start, "Starting to populate notifications (likes, reads) collection...");
         return new Promise((resolve, reject) => {
-            async.each(notification_list, function(new_notify, callback) {
-                    Actor.findOne({ username: new_notify.actor }, (err, act) => {
-                        if (err) {
-                            console.log(color_error, "ERROR: Something went wrong with finding actor in database");
-                            console.log(err);
-                            return;
-                        }
-                        if (act) {
-                            var notifydetail = {
-                                actor: act,
-                                notificationType: new_notify.type,
-                                time: timeStringToNum(new_notify.time)
-                            };
+            async.each(notification_list, async function(new_notify, callback) {
+                    const act = await Actor.findOne({ username: new_notify.actor }).exec();
+                    if (act) {
+                        const notifydetail = {
+                            actor: act,
+                            notificationType: new_notify.type,
+                            time: timeStringToNum(new_notify.time)
+                        };
 
-                            if (new_notify.userPost >= 0 && new_notify.userPost) {
-                                notifydetail.userPost = new_notify.userPost;
-                            } else if (new_notify.userReply >= 0 && new_notify.userReply) {
-                                notifydetail.userReply = new_notify.userReply;
-                            } else if (new_notify.actorReply >= 0 && new_notify.actorReply) {
-                                notifydetail.actorReply = new_notify.actorReply;
-                            }
-
-                            var notify = new Notification(notifydetail);
-                            notify.save(function(err) {
-                                if (err) {
-                                    console.log(color_error, "ERROR: Something went wrong with saving notification(reply) in database");
-                                    callback(err);
-                                }
-                                // console.log('Saved New Notification');
-                                callback();
-                            });
-                        } else { //Else no actor found
-                            console.log(color_error, "ERROR: Actor not found in database");
-                            callback();
+                        if (new_notify.userPost >= 0 && new_notify.userPost) {
+                            notifydetail.userPost = new_notify.userPost;
+                        } else if (new_notify.userReply >= 0 && new_notify.userReply) {
+                            notifydetail.userReply = new_notify.userReply;
+                        } else if (new_notify.actorReply >= 0 && new_notify.actorReply) {
+                            notifydetail.actorReply = new_notify.actorReply;
                         }
-                    });
+
+                        const notify = new Notification(notifydetail);
+                        try {
+                            await notify.save();
+                        } catch (err) {
+                            console.log(color_error, "ERROR: Something went wrong with saving notification(like, read) in database");
+                            next(err);
+                        }
+                    } else { //Else no actor found
+                        console.log(color_error, "ERROR: Actor not found in database");
+                        callback();
+                    }
                 },
                 function(err) {
                     if (err) {
@@ -326,42 +299,37 @@ async function doPopulate() {
     }).then(function(result) {
         console.log(color_start, "Starting to populate post replies...");
         return new Promise((resolve, reject) => {
-            async.eachSeries(comment_list, function(new_reply, callback) {
-                    Actor.findOne({ username: new_reply.actor }, (err, act) => {
-                        if (act) {
-                            Script.findOne({ postID: new_reply.reply }, function(err, pr) {
-                                if (pr) {
-                                    var comment_detail = {
-                                        commentID: new_reply.id,
-                                        body: new_reply.body,
-                                        likes: getLikesComment(),
-                                        actor: act,
-                                        time: timeStringToNum(new_reply.time)
-                                    };
+            async.eachSeries(comment_list, async function(new_reply, callback) {
+                    const act = await Actor.findOne({ username: new_reply.actor }).exec();
+                    if (act) {
+                        const pr = await Script.findOne({ postID: new_reply.reply }).exec();
+                        if (pr) {
+                            const comment_detail = {
+                                commentID: new_reply.id,
+                                body: new_reply.body,
+                                likes: getLikesComment(),
+                                actor: act,
+                                time: timeStringToNum(new_reply.time)
+                            };
 
-                                    pr.comments.push(comment_detail);
-                                    pr.comments.sort(function(a, b) { return a.time - b.time; });
+                            pr.comments.push(comment_detail);
+                            pr.comments.sort(function(a, b) { return a.time - b.time; });
 
-                                    pr.save(function(err) {
-                                        if (err) {
-                                            console.log(color_error, "ERROR: Something went wrong with saving reply in database");
-                                            console.log(new_reply.id);
-                                            callback(err);
-                                        }
-                                        // console.log('Saved New Reply');
-                                        callback();
-                                    });
-                                } else { //Else no post found
-                                    console.log(color_error, "ERROR: Post not found in database");
-                                    console.log(new_reply.id);
-                                    callback();
-                                }
-                            });
-                        } else { //Else no actor found
-                            console.log(color_error, "ERROR: Actor not found in database");
+                            try {
+                                await pr.save();
+                            } catch (err) {
+                                console.log(color_error, "ERROR: Something went wrong with saving reply in database");
+                                next(err);
+                            }
+                        } else { //Else no post found
+                            console.log(color_error, "ERROR: Post not found in database");
                             callback();
                         }
-                    })
+
+                    } else { //Else no actor found
+                        console.log(color_error, "ERROR: Actor not found in database");
+                        callback();
+                    }
                 },
                 function(err) {
                     if (err) {

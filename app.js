@@ -2,28 +2,23 @@
  * Module dependencies.
  */
 const express = require('express');
-const _ = require('lodash');
 const compression = require('compression');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const logger = require('morgan');
-const chalk = require('chalk');
 const errorHandler = require('errorhandler');
 const lusca = require('lusca');
 const dotenv = require('dotenv');
-const MongoStore = require('connect-mongo')(session);
+const MongoStore = require('connect-mongo');
 const flash = require('express-flash');
 const path = require('path');
 const mongoose = require('mongoose');
 const passport = require('passport');
-const expressValidator = require('express-validator');
-const expressStatusMonitor = require('express-status-monitor');
-var schedule = require('node-schedule');
+const schedule = require('node-schedule');
+const multer = require('multer');
 const fs = require('fs');
 const util = require('util');
 fs.readFileAsync = util.promisify(fs.readFile);
-const multer = require('multer');
-var schedule = require('node-schedule');
 
 var userpost_options = multer.diskStorage({
     destination: path.join(__dirname, 'uploads/user_post'),
@@ -34,7 +29,7 @@ var userpost_options = multer.diskStorage({
     }
 });
 var useravatar_options = multer.diskStorage({
-    destination: path.join(__dirname, 'uploads/user_post'),
+    destination: path.join(__dirname, 'uploads/user_avatar'),
     filename: function(req, file, cb) {
         var prefix = req.user.id + Math.random().toString(36).slice(2, 10);
         cb(null, prefix + file.originalname.replace(/[^A-Z0-9]+/ig, "_"));
@@ -45,7 +40,7 @@ const userpostupload = multer({ storage: userpost_options });
 const useravatarupload = multer({ storage: useravatar_options });
 
 /**
- * Load environment variables from .env file, where API keys and passwords are configured.
+ * Load environment variables from .env file.
  */
 dotenv.config({ path: '.env' });
 
@@ -70,15 +65,10 @@ const app = express();
 /**
  * Connect to MongoDB.
  */
-mongoose.Promise = global.Promise;
-mongoose.set('useFindAndModify', false);
-mongoose.set('useCreateIndex', true);
-mongoose.set('useNewUrlParser', true);
-mongoose.set('useUnifiedTopology', true);
-mongoose.connect(process.env.MONGODB_URI || process.env.MONGOLAB_URI);
+mongoose.connect(process.env.MONGODB_URI);
 mongoose.connection.on('error', (err) => {
     console.error(err);
-    //console.log('%s MongoDB connection error. Please make sure MongoDB is running.', chalk.red('✗'));
+    console.log('%s MongoDB connection error. Please make sure MongoDB is running.');
     process.exit();
 });
 
@@ -86,26 +76,24 @@ mongoose.connection.on('error', (err) => {
  **CRON JOBS
  **Check if users are still active every 8 hours (at 4:30am, 12:30pm, and 20:30pm)
  */
-var rule1 = new schedule.RecurrenceRule();
+const rule1 = new schedule.RecurrenceRule();
 rule1.hour = 4;
 rule1.minute = 30;
-var j = schedule.scheduleJob(rule1, function() {
+const j = schedule.scheduleJob(rule1, function() {
     userController.stillActive();
 });
 
-var rule2 = new schedule.RecurrenceRule();
+const rule2 = new schedule.RecurrenceRule();
 rule2.hour = 12;
 rule2.minute = 30;
-
-var j2 = schedule.scheduleJob(rule2, function() {
+const j2 = schedule.scheduleJob(rule2, function() {
     userController.stillActive();
 });
 
-var rule3 = new schedule.RecurrenceRule();
+const rule3 = new schedule.RecurrenceRule();
 rule3.hour = 20;
 rule3.minute = 30;
-
-var j3 = schedule.scheduleJob(rule3, function() {
+const j3 = schedule.scheduleJob(rule3, function() {
     userController.stillActive();
 });
 
@@ -116,36 +104,30 @@ app.set('port', process.env.PORT || 3000);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 //app.use(expressStatusMonitor());
-//app.use(compression());
-
+app.use(compression());
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(expressValidator());
 app.use(session({
     resave: true,
     saveUninitialized: true,
-    rolling: false,
+    secret: process.env.SESSION_SECRET,
     cookie: {
         path: '/',
         httpOnly: true,
         secure: false,
-        maxAge: 7200000 //2 hours
+        maxAge: 86400000 //24 hours
     },
-    secret: process.env.SESSION_SECRET,
-    store: new MongoStore({
-        url: process.env.MONGODB_URI || process.env.MONGOLAB_URI,
-        autoReconnect: true,
-        clear_interval: 3600
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGODB_URI,
     })
 }));
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(flash());
-
-//this allows us to not check CSRF when uploading an image. Its a weird issue that
-//multer and lusca no not play well together
 app.use((req, res, next) => {
+    // Multer multipart/form-data handling needs to occur before the Lusca CSRF check.
+    // This allow sus to not check CSRF when uploading an image file. It's a weird issue that multer and lusca do not play well together.
     if ((req.path === '/post/new') || (req.path === '/account/profile') || (req.path === '/account/signup_info_post')) {
         console.log("Not checking CSRF. Out path now");
         next();
@@ -154,14 +136,18 @@ app.use((req, res, next) => {
     }
 });
 
-//app.use(lusca.xframe('SAMEORIGIN'));
-//allow-from https://example.com/
-//add_header X-Frame-Options "allow-from https://cornell.qualtrics.com/";
-//app.use(lusca.xframe('allow-from https://cornell.qualtrics.com/'));
+app.use(lusca.xframe('SAMEORIGIN'));
 app.use(lusca.xssProtection(true));
-
+app.disable('x-powered-by');
+// allow-from https://example.com/
+// add_header X-Frame-Options "allow-from https://cornell.qualtrics.com/";
+// app.use(lusca.xframe('allow-from https://cornell.qualtrics.com/'));
 app.use((req, res, next) => {
     res.locals.user = req.user;
+    res.locals.site_logo = process.env.SITE_LOGO;
+    res.locals.site_favicon = process.env.SITE_FAVICON;
+    res.locals.site_name = process.env.SITE_NAME;
+    res.locals.cdn = process.env.CDN;
     next();
 });
 
@@ -170,16 +156,14 @@ app.use((req, res, next) => {
     if (!req.user &&
         req.path !== '/login' &&
         req.path !== '/signup' &&
-        req.path !== '/bell' &&
         req.path !== '/pageLog' &&
-        !req.path.match(/^\/auth/) &&
+        req.path !== '/pageTimes' &&
+        req.path !== '/notifications' &&
         !req.path.match(/\./)) {
-        req.session.returnTo = req.path;
+        req.session.returnTo = req.originalUrl;
     }
     next();
 });
-
-var csrf = lusca({ csrf: true });
 
 app.use('/public', express.static(path.join(__dirname, 'public'), { maxAge: 31557600000 }));
 app.use('/semantic', express.static(path.join(__dirname, 'semantic'), { maxAge: 31557600000 }));
@@ -192,7 +176,7 @@ app.use('/profile_pictures', express.static(path.join(__dirname, 'profile_pictur
  */
 app.get('/', passportConfig.isAuthenticated, scriptController.getScript);
 
-app.post('/post/new', userpostupload.single('picinput'), csrf, scriptController.newPost);
+app.post('/post/new', userpostupload.single('picinput'), scriptController.newPost);
 app.post('/pageLog', passportConfig.isAuthenticated, userController.postPageLog);
 app.post('/pageTimes', passportConfig.isAuthenticated, userController.postPageTime);
 
@@ -229,13 +213,14 @@ app.post('/signup', userController.postSignup);
 
 app.get('/account', passportConfig.isAuthenticated, userController.getAccount);
 app.post('/account/password', passportConfig.isAuthenticated, userController.postUpdatePassword);
-app.post('/account/profile', passportConfig.isAuthenticated, useravatarupload.single('picinput'), csrf, userController.postUpdateProfile);
+app.post('/account/profile', passportConfig.isAuthenticated, useravatarupload.single('picinput'), userController.postUpdateProfile);
 app.get('/account/signup_info', passportConfig.isAuthenticated, function(req, res) {
     res.render('account/signup_info', {
         title: 'Add Information'
     });
 });
-app.post('/account/signup_info_post', passportConfig.isAuthenticated, useravatarupload.single('picinput'), csrf, userController.postSignupInfo);
+app.post('/account/signup_info_post', passportConfig.isAuthenticated, useravatarupload.single('picinput'), userController.postSignupInfo);
+app.post('/account/consent', passportConfig.isAuthenticated, userController.postConsent);
 
 app.get('/me', passportConfig.isAuthenticated, userController.getMe);
 app.get('/user/:userId', passportConfig.isAuthenticated, actorsController.getActor);
@@ -278,7 +263,7 @@ app.use(function(err, req, res, next) {
  * Start Express server.
  */
 app.listen(app.get('port'), () => {
-    console.log('%s App is running at http://localhost:%d in %s mode', chalk.green('✓'), app.get('port'), app.get('env')); 
+    console.log(`App is running on http://localhost:${app.get('port')} in ${app.get('env')} mode.`);
     console.log('  Press CTRL-C to stop\n');
 });
 module.exports = app;

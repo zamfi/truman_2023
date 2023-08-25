@@ -19,14 +19,10 @@ block content
     h3 No NSFW material
     p If you wouldn't show your boss, don't show it here! 
 
-    if feed
-      .ui.big.green.labeled.icon.button.feed
-        i.reply.icon
-        |   Back to Feed
-    else
+    if !user.consent
       .ui.big.green.labeled.icon.button.info
-        i.rocket.icon
-        |   Got it!
+          i.rocket.icon
+          |   Got it!
   
   script.
     $('.ui.big.green.labeled.icon.button.info').on('click', function() {

@@ -23,7 +23,7 @@ block content
           span(style="font-weight: normal") (Click to Change)
         label(for='picinput', style="width: fit-content")
           if user.profile.picture
-            img#imgInp.ui.small.image(src='/user_post/'+user.profile.picture)
+            img#imgInp.ui.small.image(src='/user_avatar/'+user.profile.picture)
           else
             img#imgInp.ui.small.image(src=user.gravatar(60))
         input#picinput(type='file', accept='image/*', capture='camera', name='picinput')

@@ -8,7 +8,7 @@ $(window).on("load", function() {
         $('.ui.tiny.post.modal').modal('show');
     });
 
-    //new post validator (picture and text can not be empty)
+    //new post validator (picture and text can not be empty); using Semantic UI
     $('#postform').form({
         on: 'blur',
         fields: {
@@ -32,9 +32,5 @@ $(window).on("load", function() {
             $('.actions .ui.green.button').addClass('disabled');
             $('.actions .ui.green.button').val('Posting...');
         }
-    });
-
-    $('#postform').submit(function(e) {
-        e.preventDefault();
     });
 });

@@ -5,13 +5,13 @@ block content
     h2(style="text-align: center;") All Actors in Database
   .ui.five.stackable.cards
     for actor in actors
-      .card 
+      .ui.card
         .image
-          img(src=cdn+"/profile_pictures/"+actor.profile.picture)
-        .content 
-          .header #{actor.profile.name}
-          .meta @!{actor.username}
-          .description(style="white-space: pre-line;") !{actor.profile.bio}
+          img(src=cdn+'/profile_pictures/'+actor.profile.picture)
+        .content
+          a(href='/user/'+actor.username).header= actor.profile.name
+          .meta="@"+actor.username
+          .description(style='white-space: pre-wrap')=actor.profile.bio
           .description(style="margin-top: 5px;")
             if actor.profile.location
               i.marker.icon

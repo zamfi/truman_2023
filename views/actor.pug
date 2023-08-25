@@ -7,10 +7,8 @@ block content
         img(src=cdn+'/profile_pictures/'+actor.profile.picture)
       .content
         a.header= actor.profile.name
-          if actor.class
-            i.icon.blue.check.circle(style="margin-left: 5px;")
         .meta="@"+actor.username
-        .description(style = 'white-space: pre-wrap')=actor.profile.bio
+        .description(style='white-space: pre-wrap')=actor.profile.bio
         .description(style="margin-top: 5px;")
           if actor.profile.location
             i.marker.icon
@@ -21,17 +19,15 @@ block content
             | Following
           else 
             | Follow
-      //- .extra.content
       .two.ui.bottom.attached.icon.buttons
-          button.ui.button.block(data-tooltip='Block User', data-position='bottom left', username=actor.username)
-            i.ban.icon
-          button.ui.button.report(data-tooltip='Report User', data-position='bottom right', username=actor.username)
-            i.flag.icon
+        button.ui.button.block(data-tooltip='Block User', data-position='bottom left', username=actor.username)
+          i.ban.icon
+        button.ui.button.report(data-tooltip='Report User', data-position='bottom right', username=actor.username)
+          i.flag.icon
 
   #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
     img.ui.centered.small.image(src='/public/heart.svg')
   #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;')
-    -const isProfile=true
     if (script.length == 0)
       .ui.fluid.card
         .content
@@ -99,14 +95,15 @@ block content
                      
 block scripts
   script().
-    var numComments = !{JSON.stringify(user.numComments)};
-    var isBlocked = !{JSON.stringify(isBlocked)};
-    var isReported = !{JSON.stringify(isReported)};
+    let numComments = !{JSON.stringify(user.numComments)};
+    let isBlocked = !{JSON.stringify(isBlocked)};
+    let isReported = !{JSON.stringify(isReported)};
   script(src='/public/js/actor.js')
   script(src='/public/js/postFunctionalities.js')
 
 block styles 
   style. 
+    //- CSS for reporting and blocking modals
     label {
       font-size: medium !important;
     }

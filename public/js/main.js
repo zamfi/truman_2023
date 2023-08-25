@@ -8,20 +8,20 @@ function addPageTime() {
     const startTime = window.sessionStorage.getItem('startDate');
     if (startTime !== 'null' && window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
         const timeDuration = Date.now() - startTime;
-        $.post("/pageTimes", {
-            time: timeDuration,
-            _csrf: $('meta[name="csrf-token"]').attr('content')
-        }).then(function() {
-            window.sessionStorage.setItem('startDate', 'null');
-        }).catch(function(err) {
-            console.log(err);
-        });
+        // $.post("/pageTimes", {
+        //     time: timeDuration,
+        //     _csrf: $('meta[name="csrf-token"]').attr('content')
+        // }).then(function() {
+        //     window.sessionStorage.setItem('startDate', 'null');
+        // }).catch(function(err) {
+        //     console.log(err);
+        // });
 
     }
 }
 
 $(window).on("load", function() {
-    var timeout = null; //Timer used for tracking user activity. Initialized to null. 
+    let timeout = null; //Timer used for tracking user activity. Initialized to null. 
     window.sessionStorage.setItem('startDate', 'null');
 
     //Definition of an active user: mouse movement, clicks etc. If they haven't done it in 1 minute, we stop the timer and record the time.
@@ -57,18 +57,18 @@ $(window).on("load", function() {
     $('.ui.checkbox').checkbox();
 
     if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
-        $.post("/pageLog", {
-            path: window.location.pathname,
-            _csrf: $('meta[name="csrf-token"]').attr('content')
-        });
+        // $.post("/pageLog", {
+        //     path: window.location.pathname,
+        //     _csrf: $('meta[name="csrf-token"]').attr('content')
+        // });
         if (window.location.pathname !== '/notifications') {
             setInterval(function() {
                 // method to be executed;
-                $.getJSON("/notifications", { bell: true }, function(json) {
-                    if (json.count != 0) {
-                        $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
-                    }
-                });
+                // $.getJSON("/notifications", { bell: true }, function(json) {
+                //     if (json.count != 0) {
+                //         $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
+                //     }
+                // });
             }, 5000);
         }
     };

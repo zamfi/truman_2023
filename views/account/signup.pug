@@ -3,7 +3,6 @@ extends ../ui_layout
 block content
   .computer.only.tablet.only.eight.wide.column
     img.ui.fluid.image(src='/public/homepage.jpg')
-  
   .eight.wide.computer.eight.wide.tablet.sixteen.wide.mobile.column
     .ui.card.fluid(style="padding: 20px; margin-top: 90px;")
       h2.ui.header Sign Up
@@ -25,8 +24,8 @@ block content
           label(for='confirmPassword') Confirm Password 
           input(type='password', name='confirmPassword', id='confirmPassword', placeholder='Confirm Password', minlength="4", required)
           span(style="color: green; visibility:hidden")#passwordsMatch  
-              i.icon.check 
-              | Passwords Match
+            i.icon.check 
+            | Passwords Match
         .field
           .ui.checkbox
             input(type='checkbox', name='tos', id='tos', required)
