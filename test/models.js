@@ -1,8 +1,5 @@
-const mongoose = require('mongoose');
-const {expect} = require('chai');
+const { expect } = require('chai');
 const sinon = require('sinon');
-require('sinon-mongoose');
-
 const User = require('../models/User');
 
 describe('User Model', () => {
@@ -14,7 +11,7 @@ describe('User Model', () => {
       .expects('save')
       .yields(null);
 
-    user.save(function (err, result) {
+    user.save((err) => {
       UserMock.verify();
       UserMock.restore();
       expect(err).to.be.null;
@@ -81,7 +78,7 @@ describe('User Model', () => {
       userMock.restore();
       expect(result.email).to.equal('test@gmail.com');
       done();
-    })
+    });
   });
 
   it('should remove user by email', (done) => {
@@ -91,16 +88,54 @@ describe('User Model', () => {
     };
 
     userMock
-      .expects('remove')
+      .expects('deleteOne')
       .withArgs({ email: 'test@gmail.com' })
       .yields(null, expectedResult);
 
-    User.remove({ email: 'test@gmail.com' }, (err, result) => {
+    User.deleteOne({ email: 'test@gmail.com' }, (err, result) => {
       userMock.verify();
       userMock.restore();
       expect(err).to.be.null;
       expect(result.nRemoved).to.equal(1);
       done();
-    })
+    });
+  });
+
+  it('should check password', async () => {
+    const UserMock = sinon.mock(new User({
+      email: 'test@gmail.com',
+      password: '$2y$10$ux4O8y0CCilFQ5JS66namekb9Hbr1AN7kwEDn2ej6e6AYw3BPqAVa'
+    }));
+
+    const user = UserMock.object;
+    const comparePasscbSpy = sinon.spy();
+    await user.comparePassword('root1234', comparePasscbSpy);
+    expect(comparePasscbSpy.calledOnceWithExactly(null, true)).to.be.true;
+  });
+
+  it('should generate gravatar without email and size', () => {
+    const UserMock = sinon.mock(new User({}));
+    const user = UserMock.object;
+
+    const gravatar = user.gravatar();
+    expect(gravatar.includes('gravatar.com')).to.equal(true);
+  });
+
+  it('should generate gravatar with size', () => {
+    const UserMock = sinon.mock(new User({}));
+    const user = UserMock.object;
+    const size = 300;
+
+    const gravatar = user.gravatar(size);
+    expect(gravatar.includes(`s=${size}`)).to.equal(true);
+  });
+
+  it('should generate gravatar with email', () => {
+    const UserMock = sinon.mock(new User({ email: 'test@gmail.com' }));
+    const user = UserMock.object;
+    const md5 = '1aedb8d9dc4751e229a335e371db8058';
+
+    const gravatar = user.gravatar();
+    expect(gravatar.includes(md5)).to.equal(true);
   });
 });

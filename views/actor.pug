@@ -1,4 +1,7 @@
 extends ui_layout
+
+block styles
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
   
 block content
   .computer.only.tablet.only.four.wide.column 
@@ -28,13 +31,14 @@ block content
   #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
     img.ui.centered.small.image(src='/public/heart.svg')
   #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;')
-    if (script.length == 0)
+    if (script.length==0)
       .ui.fluid.card
         .content
           .description
           |  No posts to show.
     each val in script
       include ./partials/actorPost
+      
   .ui.small.report.coupled.modal
     i.close.icon
     .header 
@@ -100,14 +104,3 @@ block scripts
     let isReported = !{JSON.stringify(isReported)};
   script(src='/public/js/actor.js')
   script(src='/public/js/postFunctionalities.js')
-
-block styles 
-  style. 
-    //- CSS for reporting and blocking modals
-    label {
-      font-size: medium !important;
-    }
-    .grouped.fields .field{
-      margin-left: 5px !important;
-    }
-  link(type='text/css', rel='stylesheet', href='/public/css/script.css')

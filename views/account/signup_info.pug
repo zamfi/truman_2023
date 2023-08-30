@@ -4,7 +4,7 @@ block content
   .twelve.wide.computer.tablet.sixteen.wide.mobile.column(style="margin-top: 2em; margin-bottom: 2em;")
     h2(style="text-align: center;") Tell Us A Little More About Yourself
 
-    form.ui.form(action='/account/signup_info_post', method='POST', enctype='multipart/form-data')
+    form.ui.large.form(action='/account/signup_info_post', method='POST', enctype='multipart/form-data')
       input(type='hidden', name='_csrf', value=_csrf)
       .field.image-upload
         p(style="font-weight: bold; font-size: medium; margin-bottom: 0.2em") Profile Picture 
@@ -15,7 +15,7 @@ block content
           else
             img#imgInp.ui.small.image(src=user.gravatar(60))
         input#picinput(type='file', accept='image/*', capture='camera', name='picinput')
-      .inline.fields
+      .inline.fields(style='padding-top: 10px !important;')
         .ten.wide.field
           label(for='name') Name
           input.form-control(type='text', name='name', id='name', value=user.profile.name)
@@ -35,13 +35,3 @@ block content
     $('button.ui.button.com').on('click', function() {
         window.location.href = '/com';
       });
-
-block styles 
-  style. 
-    label {
-      font-size: medium !important;
-    }
-
-    .inline.fields .field {
-      padding-top: 10px !important;
-    }

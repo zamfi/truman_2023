@@ -1,4 +1,9 @@
 $(window).on("load", function() {
+    //Button to go to feed
+    $('.ui.home.inverted.button').on('click', function() {
+        window.location.href = '/';
+    });
+
     $('.coupled.modal').modal({
         allowMultiple: false
     });
@@ -26,14 +31,14 @@ $(window).on("load", function() {
     //REPORT Actor Modal #2
     $('.second.modal').modal({
         closable: false,
-        onShow: function() {
+        onVisible: function() {
             //Modal for Blocked Users
             $('.second.modal').modal('hide others');
         },
         onHidden: function(modal) {
             if (isBlocked) {
                 //Modal for Blocked Users
-                $('.ui.small.basic.blocked.modal').modal('show').removeClass('hidden');
+                $('.ui.small.basic.blocked.modal').modal('show');
             }
         }
     });
@@ -48,7 +53,7 @@ $(window).on("load", function() {
             },
             onApprove: function() {
                 //unblock user
-                var username = $('button.ui.button.block').attr("username");
+                const username = $('button.ui.button.block').attr("username");
                 $.post("/user", { unblocked: username, _csrf: $('meta[name="csrf-token"]').attr('content') })
                     .then(function() {
                         isBlocked = false;
@@ -79,7 +84,7 @@ $(window).on("load", function() {
 
     //BLOCK Actor button
     $('button.ui.button.block').on('click', function() {
-        var username = $(this).attr("username");
+        const username = $(this).attr("username");
         isBlocked = true;
         $.post("/user", { blocked: username, _csrf: $('meta[name="csrf-token"]').attr('content') });
 

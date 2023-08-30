@@ -144,9 +144,6 @@ app.disable('x-powered-by');
 // app.use(lusca.xframe('allow-from https://cornell.qualtrics.com/'));
 app.use((req, res, next) => {
     res.locals.user = req.user;
-    res.locals.site_logo = process.env.SITE_LOGO;
-    res.locals.site_favicon = process.env.SITE_FAVICON;
-    res.locals.site_name = process.env.SITE_NAME;
     res.locals.cdn = process.env.CDN;
     next();
 });
@@ -194,11 +191,7 @@ app.get('/info', passportConfig.isAuthenticated, function(req, res) {
     });
 });
 
-app.get('/tos', function(req, res) {
-    res.render('tos', {
-        title: 'TOS'
-    });
-});
+app.get('/tos', function(req, res) { res.render('tos', { title: 'Terms of Service' }); });
 
 app.get('/completed', passportConfig.isAuthenticated, userController.userTestResults);
 

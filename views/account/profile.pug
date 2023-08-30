@@ -4,7 +4,7 @@ block content
   .sixteen.wide.column(style="margin-top: 2em; margin-bottom: 2em;")
     h2(style="text-align: center;") Profile Information
 
-    form.ui.form(action='/account/profile', method='POST', enctype='multipart/form-data', id='profile')
+    form.ui.large.form(action='/account/profile', method='POST', enctype='multipart/form-data', id='profile')
       input(type='hidden', name='_csrf', value=_csrf)
       .field
         label(for='email') Email
@@ -30,7 +30,7 @@ block content
       button.ui.large.button.disabled(type='submit') Update Profile
     .ui.divider
     h3.ui.header(style="margin-top: 2em;") Change Password
-    form.ui.form(action='/account/password', method='POST', id='password')
+    form.ui.large.form(action='/account/password', method='POST', id='password')
       input(type='hidden', name='_csrf', value=_csrf)
       .field
         label(for='password') New Password
@@ -43,47 +43,5 @@ block content
             | Passwords Match
       button.ui.large.button.disabled(type='submit') Change Password
 
-  script.
-    $('form[id="profile"] input').on('input', function(){
-      $('form[id="profile"] button').removeClass('disabled').addClass('green');
-    });
-    $('form[id="password"] input').on('input', function(){
-      $('form[id="password"] button').removeClass('disabled');
-      if($('input[type="password"][id="password"]').val() !== $('input[type="password"][id="confirmPassword"]').val() || 
-        $('input[type="password"][id="password"]').val().length < 4 || 
-        $('input[type="password"][id="confirmPassword"]').val().length < 4) {
-        isFilled=false;
-      } 
-      
-      if($('input[type="password"][id="password"]').val().length >= 1 && $('input[type="password"][id="confirmPassword"]').val().length >= 1) {
-        if ($('input[type="password"][id="password"]').val().length < 4 && $('input[type="password"][id="confirmPassword"]').val().length < 4){
-          $("#passwordsMatch").html("<span style='color: red'> <i class='icon times'/>Password is too short. Must be at least 4 characters long.</span>");
-          $("#passwordsMatch").css("visibility", "visible");
-        } else if ($('input[type="password"][id="password"]').val() !== $('input[type="password"][id="confirmPassword"]').val()){
-          $("#passwordsMatch").html("<span style='color: red'> <i class='icon times'/>Passwords do not match.</span>");
-          $("#passwordsMatch").css("visibility", "visible");
-        } else {
-          $("#passwordsMatch").html("<span style='color: green'> <i class='icon check'/>Passwords match.</span>");
-          isFilled=true;
-          $("#passwordsMatch").css("visibility", "visible");
-        }
-      } else {
-        $("#passwordsMatch").css("visibility", "hidden");
-      }
-
-      if (isFilled){
-        $('form[id="password"] button').addClass("green");
-      } else {
-        $('form[id="password"] button').removeClass("green");
-      }
-    });
-
-
-block styles 
-  style. 
-    label {
-      font-size: medium !important;
-    }
-    .inline.fields .field {
-      padding-top: 10px !important;
-    }
+block scripts
+  script(src='/public/js/profile.js')

@@ -1,46 +1,61 @@
 //Before Page load:
 $('#content').hide();
 $('#loading').show();
+// const inactiveThreshold = 60000; //60 seconds 
 
-//Called when inactive and when page unloads
-//Function calculates duration of activity and adds to sum in the database.
-function addPageTime() {
-    const startTime = window.sessionStorage.getItem('startDate');
-    if (startTime !== 'null' && window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
-        const timeDuration = Date.now() - startTime;
-        // $.post("/pageTimes", {
-        //     time: timeDuration,
-        //     _csrf: $('meta[name="csrf-token"]').attr('content')
-        // }).then(function() {
-        //     window.sessionStorage.setItem('startDate', 'null');
-        // }).catch(function(err) {
-        //     console.log(err);
-        // });
-
-    }
-}
+// function resetActiveTimer() {
+//     if (isActive) {
+//         var currentTime = new Date();
+//         var activeDuration = currentTime - window.sessionStorage.getItem('activeStartTime');
+//         if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/forgot') {
+//             $.post("/pageTimes", {
+//                 time: activeDuration,
+//                 _csrf: $('meta[name="csrf-token"]').attr('content')
+//             })
+//         }
+//         isActive = false;
+//     }
+// }
 
 $(window).on("load", function() {
-    let timeout = null; //Timer used for tracking user activity. Initialized to null. 
-    window.sessionStorage.setItem('startDate', 'null');
+    // null if it is a new session (https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage) 
+    // if (window.sessionStorage.getItem('isActive') === null) {
+    //     window.sessionStorage.setItem('isActive', false);
+    //     window.sessionStorage.setItem('totalActiveTime', 0);
+    // }
 
-    //Definition of an active user: mouse movement, clicks etc. If they haven't done it in 1 minute, we stop the timer and record the time.
-    $('#pagegrid').on('mousemove click mouseup mousedown keydown keypress keyup submit change mouseenter scroll resize dblclick mousewheel', function() {
-        //If there hasn't been a "start time" for activity, set it.We use session storage so we can track activity when pages changes too.
-        if (window.sessionStorage.getItem('startDate') == 'null') {
-            window.sessionStorage.setItem('startDate', Date.now());
-        }
-        clearTimeout(timeout);
-        timeout = setTimeout(function() {
-            console.log('Mouse idle for 60 sec');
-            addPageTime();
-        }, 60000);
-    });
+    // let timeout = null;
+    // //Definition of an active user: mouse movement, clicks etc. If they haven't done it in 1 minute, we stop the timer and record the time.
+    // $('#pagegrid').on('mousemove click mouseup mousedown keydown keypress keyup mouseenter scroll resize dblclick mousewheel', function() {
+    //     //If there hasn't been a "start time" for activity, set it.We use session storage so we can track activity when pages changes too.
+    //     if (window.sessionStorage.getItem('isActive') == 'false') {
+    //         window.sessionStorage.setItem('activeStartTime', Date.now());
+    //     }
+    //     window.sessionStorage.setItem('isActive', true);
+    //     clearTimeout(timeout);
+    //     timeout = setTimeout(function() {
+    //         console.log('Mouse idle for 60 sec');
+    //         resetActiveTimer();
+    //     }, inactiveThreshold);
+    // });
+
+    //Update the active time every second
+    // setInterval(function() {
+    //     if (window.sessionStorage.getItem('isActive') == 'true') {
+    //         var currentTime = new Date();
+    //         var timeSinceLastMove = currentTime - window.sessionStorage.getItem('activeStartTime');
+
+    //         if (timeSinceLastMove >= inactiveThreshold) {
+    //             resetActiveTimer();
+    //         }
+    //     }
+    //     console.log("Total active time (ms):", totalActiveTime);
+    // }, 1000);
 
     //add humanized time to all posts
     $('.right.floated.time.meta, .date').each(function() {
-        var ms = parseInt($(this).text(), 10);
-        let time = new Date(ms);
+        const ms = parseInt($(this).text(), 10);
+        const time = new Date(ms);
         $(this).text(humanized_time_span(time));
     });
 
@@ -54,21 +69,21 @@ $(window).on("load", function() {
         $(this).closest('.message').transition('fade');
     });
     //Semantic UI: function to make checkbox work
-    $('.ui.checkbox').checkbox();
+    $('.checkbox').checkbox();
 
-    if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
-        // $.post("/pageLog", {
-        //     path: window.location.pathname,
-        //     _csrf: $('meta[name="csrf-token"]').attr('content')
-        // });
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/forgot') {
+        $.post("/pageLog", {
+            path: window.location.pathname,
+            _csrf: $('meta[name="csrf-token"]').attr('content')
+        });
         if (window.location.pathname !== '/notifications') {
             setInterval(function() {
                 // method to be executed;
-                // $.getJSON("/notifications", { bell: true }, function(json) {
-                //     if (json.count != 0) {
-                //         $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
-                //     }
-                // });
+                $.getJSON("/notifications", { bell: true }, function(json) {
+                    if (json.count != 0) {
+                        $("i.big.alarm.icon").replaceWith('<i class="big icons"><i class="red alarm icon"></i><i class="corner yellow lightning icon"></i></i>');
+                    }
+                });
             }, 5000);
         }
     };
@@ -76,7 +91,7 @@ $(window).on("load", function() {
     //Picture Preview on Image Selection (Used for: uploading new post, updating profile)
     function readURL(input) {
         if (input.files && input.files[0]) {
-            var reader = new FileReader();
+            let reader = new FileReader();
             reader.onload = function(e) {
                 $('#imgInp').attr('src', e.target.result);
             }
@@ -88,18 +103,13 @@ $(window).on("load", function() {
         readURL(this);
     });
 
-    //Button to go to feed
-    $('.ui.big.green.labeled.icon.button.feed, .ui.home.inverted.button').on('click', function() {
-        window.location.href = '/';
-    });
-
     //Edit button
     $('.ui.editprofile.button').on('click', function() {
         window.location.href = '/account';
     });
 
     // Track how long a post is on the screen (borders are defined by image)
-    // Start time: When the entire photo is visible in the viewport .
+    // Start time: When the entire photo is visible in the viewport.
     // End time: When the entire photo is no longer visible in the viewport.
     $('.ui.fluid.card .img.post').visibility({
         once: false,
@@ -186,5 +196,5 @@ $(window).on("load", function() {
 
 $(window).on("beforeunload", function() {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event
-    addPageTime();
+    // resetActiveTimer();
 });

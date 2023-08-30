@@ -2,7 +2,7 @@ extends ../ui_layout
 
 block content
   .computer.only.tablet.only.eight.wide.column
-    img.ui.fluid.image(src='/public/homepage.jpg')
+    img.ui.fluid.image(src=process.env.SITE_PICTURE)
   .eight.wide.computer.eight.wide.tablet.sixteen.wide.mobile.column
     .ui.card.fluid(style="padding: 20px; margin-top: 90px;")
       h2.ui.header Sign Up
@@ -23,67 +23,16 @@ block content
         .field
           label(for='confirmPassword') Confirm Password 
           input(type='password', name='confirmPassword', id='confirmPassword', placeholder='Confirm Password', minlength="4", required)
-          span(style="color: green; visibility:hidden")#passwordsMatch  
+          span(style="color: green; visibility:hidden; display: inline-block;")#passwordsMatch  
             i.icon.check 
             | Passwords Match
         .field
           .ui.checkbox
-            input(type='checkbox', name='tos', id='tos', required)
+            input(type='checkbox', name='tos', tabindex="0", id='tos', required)
             label(for='tos')
               | I agree to the 
               a(href='/tos', target="_blank") Terms and Conditions.
         button.ui.large.button(type='submit') Sign Up
 
-  script.
-    //Sign Up Button: Form validation to make Sign Up button Green
-    function enableSaveBtn(){
-      let isFilled = true;
-      // Check Username and MTurkID is not blank
-      $('input[type="text"]').each(function(index){
-        if ($(this).val().trim().length === 0){
-          isFilled = false; 
-          return false;
-        }
-      })
-      // Check email is valid
-      if($('input[type="email"]').is(":invalid")){
-        isFilled=false;
-      }
-      // Check TOS is checked
-      if (!$('.ui.checkbox').hasClass("checked")){
-        isFilled=false;
-      }
-      // Check passwords match and password is longer than 4
-      if($('input[type="password"][id="password"]').val() !== $('input[type="password"][id="confirmPassword"]').val() || 
-        $('input[type="password"][id="password"]').val().length < 4 || 
-        $('input[type="password"][id="confirmPassword"]').val().length < 4) {
-        isFilled=false;
-      } 
-      
-      if($('input[type="password"][id="password"]').val().length >= 1 && $('input[type="password"][id="confirmPassword"]').val().length >= 1) {
-        if ($('input[type="password"][id="password"]').val().length < 4 && $('input[type="password"][id="confirmPassword"]').val().length < 4){
-          $("#passwordsMatch").html("<span style='color: red'> <i class='icon times'/>Password is too short. Must be at least 4 characters long.</span>");
-          $("#passwordsMatch").css("visibility", "visible");
-        } else if ($('input[type="password"][id="password"]').val() !== $('input[type="password"][id="confirmPassword"]').val()){
-          $("#passwordsMatch").html("<span style='color: red'> <i class='icon times'/>Passwords do not match.</span>");
-          $("#passwordsMatch").css("visibility", "visible");
-        } else {
-          $("#passwordsMatch").html("<span style='color: green'> <i class='icon check'/>Passwords match.</span>");
-        $("#passwordsMatch").css("visibility", "visible");
-        }
-      } else {
-        $("#passwordsMatch").css("visibility", "hidden");
-      }
-      
-      if (isFilled){
-         $('button.ui.button').addClass("green");
-      } else {
-        $('button.ui.button').removeClass("green");
-      }
-    };
-    $('input[required]').on('input', function(){
-      enableSaveBtn();
-    });
-    $('input[type="checkbox"]').on('change', function(){
-      enableSaveBtn();
-    });
+block scripts
+  script(src='/public/js/profile.js')

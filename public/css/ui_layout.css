@@ -3,6 +3,21 @@ body {
     padding: 0em;
 }
 
+
+/*Page Container*/
+
+#pagegrid {
+    justify-content: center;
+}
+
+#pagecontainer {
+    padding-top: 50px;
+    justify-content: center;
+}
+
+
+/*General CSS*/
+
 .hidden {
     display: none;
 }
@@ -18,6 +33,10 @@ button,
 
 .ui.menu .item>i.icon {
     margin: 0 !important;
+}
+
+.ui.mini.image {
+    height: 35px;
 }
 
 
@@ -40,33 +59,4 @@ button,
 
 .image-upload img {
     cursor: pointer;
-}
-
-.ui.three.column.grid.pro {
-    margin: 0;
-}
-
-.ui.three.column.grid.pro .column {
-    padding: 0 4px;
-}
-
-.ui.three.column.grid.pro .column img {
-    margin-top: 8px;
-    vertical-align: middle;
-}
-
-.ui.mini.image {
-    height: 35px;
-}
-
-
-/*Page Container*/
-
-#pagecontainer {
-    padding-top: 50px;
-    justify-content: center;
-}
-
-#pagegrid {
-    justify-content: center;
 }

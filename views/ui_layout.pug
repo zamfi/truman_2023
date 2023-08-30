@@ -11,16 +11,16 @@ html
     meta(name="mobile-web-app-capable" content="yes")
     meta(name="msapplication-tap-highlight" content="no")
     meta(name="content-language" content="en_US")
-    title #{title} - #{site_name}
-    link(rel='shortcut icon', href=site_favicon)
+    title #{title} - #{process.env.SITE_NAME}
+    link(rel='shortcut icon', href=process.env.SITE_FAVICON)
     link(rel='manifest', href='/public/manifest.json')
-    link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.1/semantic.min.css')
+    link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/fomantic-ui/2.9.2/semantic.min.css')
     link(type='text/css', rel='stylesheet', href='/public/css/ui_layout.css')
     block styles
-  script(src=cdn+'/js/lib/jquery-3.1.1.min.js')
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js')
   script(src=cdn+'/js/lib/humanized_time_span.js')
   script(src=cdn+'/js/lib/lazyload.transpiled.min.js')
-  script(src='https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js', integrity='sha256-t8GepnyPmw9t+foMh3mKNvcorqNHamSKtKRxxpUEgFI=', crossorigin='anonymous')
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/fomantic-ui/2.9.2/semantic.min.js')
   script(src='/public/js/main.js')
   block scripts
 
