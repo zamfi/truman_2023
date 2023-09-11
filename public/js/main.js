@@ -1,56 +1,53 @@
 //Before Page load:
 $('#content').hide();
 $('#loading').show();
-// const inactiveThreshold = 60000; //60 seconds 
+let isActive = false;
+let activeStartTime;
 
-// function resetActiveTimer() {
-//     if (isActive) {
-//         var currentTime = new Date();
-//         var activeDuration = currentTime - window.sessionStorage.getItem('activeStartTime');
-//         if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/forgot') {
-//             $.post("/pageTimes", {
-//                 time: activeDuration,
-//                 _csrf: $('meta[name="csrf-token"]').attr('content')
-//             })
-//         }
-//         isActive = false;
-//     }
-// }
+function resetActiveTimer(loggingOut) {
+    if (isActive) {
+        const currentTime = new Date();
+        const activeDuration = currentTime - activeStartTime;
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/forgot') {
+            $.post("/pageTimes", {
+                time: activeDuration,
+                _csrf: $('meta[name="csrf-token"]').attr('content')
+            }).then(function() {
+                if (loggingOut) {
+                    window.loggingOut = true;
+                    window.location.href = '/logout';
+                }
+            })
+        }
+        isActive = false;
+    }
+}
 
 $(window).on("load", function() {
-    // null if it is a new session (https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage) 
-    // if (window.sessionStorage.getItem('isActive') === null) {
-    //     window.sessionStorage.setItem('isActive', false);
-    //     window.sessionStorage.setItem('totalActiveTime', 0);
-    // }
+    //From the first answer from https://stackoverflow.com/questions/667555/how-to-detect-idle-time-in-javascript
+    let idleTime = 0;
+    //Definition of an active user: mouse movement, clicks etc.
+    //idleTime is reset to 0 whenever mouse movement occurs.
+    $('#pagegrid').on('mousemove keypress scroll mousewheel', function() {
+        //If there hasn't been a "start time" for activity, set it. We use session storage so we can track activity when pages changes too.
+        if (!isActive) {
+            activeStartTime = Date.now();
+            isActive = true;
+        }
+        idleTime = 0;
+    });
 
-    // let timeout = null;
-    // //Definition of an active user: mouse movement, clicks etc. If they haven't done it in 1 minute, we stop the timer and record the time.
-    // $('#pagegrid').on('mousemove click mouseup mousedown keydown keypress keyup mouseenter scroll resize dblclick mousewheel', function() {
-    //     //If there hasn't been a "start time" for activity, set it.We use session storage so we can track activity when pages changes too.
-    //     if (window.sessionStorage.getItem('isActive') == 'false') {
-    //         window.sessionStorage.setItem('activeStartTime', Date.now());
-    //     }
-    //     window.sessionStorage.setItem('isActive', true);
-    //     clearTimeout(timeout);
-    //     timeout = setTimeout(function() {
-    //         console.log('Mouse idle for 60 sec');
-    //         resetActiveTimer();
-    //     }, inactiveThreshold);
-    // });
+    //every 15 seconds
+    setInterval(function() {
+        idleTime += 1;
+        if (idleTime > 4) { // 60.001-74.999 seconds (idle time)
+            resetActiveTimer(false);
+        }
+    }, 15000);
 
-    //Update the active time every second
-    // setInterval(function() {
-    //     if (window.sessionStorage.getItem('isActive') == 'true') {
-    //         var currentTime = new Date();
-    //         var timeSinceLastMove = currentTime - window.sessionStorage.getItem('activeStartTime');
-
-    //         if (timeSinceLastMove >= inactiveThreshold) {
-    //             resetActiveTimer();
-    //         }
-    //     }
-    //     console.log("Total active time (ms):", totalActiveTime);
-    // }, 1000);
+    $('a.item.logoutLink').on('click', function() {
+        resetActiveTimer(true);
+    });
 
     //add humanized time to all posts
     $('.right.floated.time.meta, .date').each(function() {
@@ -195,6 +192,8 @@ $(window).on("load", function() {
 });
 
 $(window).on("beforeunload", function() {
-    // https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event
-    // resetActiveTimer();
+    // https: //developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event
+    if (!window.loggingOut) {
+        resetActiveTimer(false);
+    }
 });
