@@ -30,7 +30,7 @@ function shuffle(array) {
  *  - finalfeed: the final feed
  */
 
-exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedContent) {
+exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedContent, removedBlockedUserContent) {
     //Final array of all posts to go in the feed
     let finalfeed = [];
     // Array of seen and unseen posts, used when order=='shuffle' so that unseen posts appear before seen posts on the final feed.
@@ -113,10 +113,14 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                     script_feed[0].likes++;
                 }
                 // Check if post has been flagged: remove it from feed array (script_feed)
-                if (user.feedAction[feedIndex].flagTime[0] && removeFlaggedContent) {
-                    script_feed.splice(0, 1);
+                if (user.feedAction[feedIndex].flagTime[0]) {
+                    if (removeFlaggedContent) {
+                        script_feed.splice(0, 1);
+                    } else {
+                        script_feed[0].flagged = true;
+                    }
                 } //Check if post is from a blocked user: remove it from feed array (script_feed)
-                else if (user.blocked.includes(script_feed[0].actor.username & removeFlaggedContent)) {
+                else if (user.blocked.includes(script_feed[0].actor.username & removedBlockedUserContent)) {
                     script_feed.splice(0, 1);
                 } else {
                     if (order == 'SHUFFLE') {
@@ -133,7 +137,7 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                 }
             } //user did not interact with this post
             else {
-                if (user.blocked.includes(script_feed[0].actor.username && removeFlaggedContent)) {
+                if (user.blocked.includes(script_feed[0].actor.username && removedBlockedUserContent)) {
                     script_feed.splice(0, 1);
                 } else {
                     if (order == 'SHUFFLE') {
