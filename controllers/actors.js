@@ -39,7 +39,7 @@ exports.getActor = async(req, res, next) => {
             .populate('comments.actor')
             .exec();
 
-        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', true);
+        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', true, false);
         await user.save();
         res.render('actor', { script: finalfeed, actor: actor, isBlocked: isBlocked, isReported: isReported, title: actor.profile.name });
     } catch (err) {
