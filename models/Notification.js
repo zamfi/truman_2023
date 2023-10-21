@@ -6,8 +6,8 @@ const notificationSchema = new mongoose.Schema({
     notificationType: String, // 3 types of notifications: 'like', 'read', 'reply'
     time: Number, //in milliseconds, relative to the time of the comment or post
 
-    userPost: Number, //which user post this action is for (0,1,2....n)
-    userReply: Number, //which user reply this action is for (0,1,2....n)
+    userPostID: Number, //which user post this action is for (0,1,2....n)
+    userReplyID: Number, //which user reply this action is for (0,1,2....n)
     replyBody: { type: String, default: '', trim: true }, //body of actor's reply
 }, { timestamps: true });
 

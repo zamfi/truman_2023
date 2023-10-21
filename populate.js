@@ -214,8 +214,9 @@ async function doPopulate() {
                             actor: act,
                             notificationType: 'reply',
                             time: timeStringToNum(new_notify.time),
-                            userPost: new_notify.userPostID,
-                            replyBody: new_notify.body
+                            userPostID: new_notify.userPostID,
+                            replyBody: new_notify.body,
+                            class: new_notify.class
                         };
 
                         const notify = new Notification(notifydetail);
@@ -258,10 +259,10 @@ async function doPopulate() {
                             time: timeStringToNum(new_notify.time)
                         };
 
-                        if (new_notify.userPost >= 0 && new_notify.userPost) {
-                            notifydetail.userPost = new_notify.userPost;
-                        } else if (new_notify.userReply >= 0 && new_notify.userReply) {
-                            notifydetail.userReply = new_notify.userReply;
+                        if (new_notify.userPostID >= 0 && new_notify.userPostID) {
+                            notifydetail.userPostID = new_notify.userPostID;
+                        } else if (new_notify.userReplyID >= 0 && new_notify.userReplyID) {
+                            notifydetail.userReplyID = new_notify.userReplyID;
                         } else if (new_notify.actorReply >= 0 && new_notify.actorReply) {
                             notifydetail.actorReply = new_notify.actorReply;
                         }
@@ -302,7 +303,7 @@ async function doPopulate() {
             async.eachSeries(comment_list, async function(new_reply, callback) {
                     const act = await Actor.findOne({ username: new_reply.actor }).exec();
                     if (act) {
-                        const pr = await Script.findOne({ postID: new_reply.reply }).exec();
+                        const pr = await Script.findOne({ postID: new_reply.postID }).exec();
                         if (pr) {
                             const comment_detail = {
                                 commentID: new_reply.id,
