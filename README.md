@@ -8,5 +8,5 @@ This project and software development was supported by the National Science Foun
 
 Also special thanks to Sahat Yalkabov and his [Hackathon Starter](https://github.com/sahat/hackathon-starter) project, which provided the basic organization for this project. 
 
-## **Demo:**
-**https://truman-content-moderation.herokuapp.com/**. You may enter a random 6-digit ID when prompted to make an account and provide a Mechanical Turk ID.
+## **Demo**
+**[https://truman-2023-82f66bc03792.herokuapp.com/](https://truman-2023-82f66bc03792.herokuapp.com/)**. You may enter a random 6-digit ID when prompted to make an account and provide a Mechanical Turk ID.
