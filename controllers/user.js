@@ -116,7 +116,7 @@ exports.postSignup = async(req, res, next) => {
         const variable_names = process.env.VARIABLE_NAMES.split(",");
         const assignedGroup = variable_names[Math.floor(Math.random() * versions)];
 
-        const surveyLink = process.env.POST_SURVEY + req.body.mturkID;
+        const surveyLink = process.env.POST_SURVEY ? process.env.POST_SURVEY + req.body.mturkID : "";
         const currDate = Date.now();
         const user = new User({
             email: req.body.email,
