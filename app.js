@@ -20,6 +20,10 @@ const fs = require('fs');
 const util = require('util');
 fs.readFileAsync = util.promisify(fs.readFile);
 
+/**
+ * Middleware for handling multipart/form-data, which is primarily used for uploading files.
+ * Files are uploaded when user's upload their profile photos and post photos.
+ */
 var userpost_options = multer.diskStorage({
     destination: path.join(__dirname, 'uploads/user_post'),
     filename: function(req, file, cb) {
@@ -72,9 +76,9 @@ mongoose.connection.on('error', (err) => {
     process.exit();
 });
 
-/****
- **CRON JOBS
- **Check if users are still active every 8 hours (at 4:30am, 12:30pm, and 20:30pm)
+/**
+ * Cron Jobs:
+ * Check if users are still active every 8 hours (at 4:30am, 12:30pm, and 20:30pm).
  */
 const rule1 = new schedule.RecurrenceRule();
 rule1.hour = 4;
@@ -127,7 +131,7 @@ app.use(passport.session());
 app.use(flash());
 app.use((req, res, next) => {
     // Multer multipart/form-data handling needs to occur before the Lusca CSRF check.
-    // This allow sus to not check CSRF when uploading an image file. It's a weird issue that multer and lusca do not play well together.
+    // This allows us to not check CSRF when uploading an image file. It's a weird issue that multer and lusca do not play well together.
     if ((req.path === '/post/new') || (req.path === '/account/profile') || (req.path === '/account/signup_info_post')) {
         console.log("Not checking CSRF. Out path now");
         next();
@@ -149,7 +153,8 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-    // After successful login, redirect back to the intended page
+    // If a user attempts to access a site page that requires logging in, but they are not logged in, then record the page they desired to visit.
+    // After successfully logging in, redirect the user back to their desired page.
     if (!req.user &&
         req.path !== '/login' &&
         req.path !== '/signup' &&
@@ -234,20 +239,20 @@ app.get('/test', passportConfig.isAuthenticated, function(req, res) {
  */
 app.use(errorHandler());
 
-// catch 404 and forward to error handler
+// Catch 404 and forward to error handler
 app.use(function(req, res, next) {
     var err = new Error('Not Found');
     err.status = 404;
     next(err);
 });
 
-// error handler
+// Error handler
 app.use(function(err, req, res, next) {
     // set locals, only providing error in development
     res.locals.message = err.message;
     res.locals.error = req.app.get('env') === 'development' ? err : {};
 
-    // render the error page
+    // Render the error page
     res.status(err.status || 500);
     res.render('error');
 });
