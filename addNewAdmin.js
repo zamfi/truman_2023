@@ -21,7 +21,7 @@ dotenv.config({ path: '.env' });
  * Connect to MongoDB.
  */
 // establish initial Mongoose connection
-mongoose.connect(process.env.PRO_MONGODB_URI, { useNewUrlParser: true });
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true });
 // listen for errors after establishing initial connection
 mongoose.connection.on('error', (err) => {
     console.error(err);
@@ -55,26 +55,20 @@ async function addAdminToDB() {
     user.profile.location = "Guest Town";
     user.profile.bio = '';
     user.profile.picture = 'avatar-icon.svg';
-
-    User.findOne({
-        email: email
-    }, (err, existingUser) => {
-        if (err) {
-            return next(err);
-        }
+    try {
+        const existingUser = await User.findOne({ email: email }).exec();
         if (existingUser) {
             console.log(color_error, `ERROR: This email is already taken.`);
             mongoose.connection.close();
             return;
         }
-        user.save((err) => {
-            if (err) {
-                return next(err);
-            }
-            console.log(color_success, `Account successfully created. Closing db connection.`);
-            mongoose.connection.close();
-        });
-    });
+        await user.save();
+
+        console.log(color_success, `Account successfully created. Closing db connection.`);
+        mongoose.connection.close();
+    } catch (err) {
+        next(err);
+    }
 }
 
 addAdminToDB();
