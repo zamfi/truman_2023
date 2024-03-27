@@ -1,0 +1,87 @@
+{
+  "root": {
+    "files": [
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "Dockerfile",
+      "LICENSE",
+      "README.md",
+      "addNewAdmin.js",
+      "app.js",
+      "data-export.js",
+      "docker-compose.yml",
+      "ecosystem.config.js",
+      "package-lock.json",
+      "package.json",
+      "populate.js"
+    ],
+    "directories": {
+      "config": {
+        "files": ["passport.js"]
+      },
+      "controllers": {
+        "files": [
+          "actors.js",
+          "helpers.js",
+          "notification.js",
+          "script.js",
+          "user.js"
+        ]
+      },
+      "input": {
+        "files": [
+          "actors.csv",
+          "notifications (read, like).csv",
+          "notifications (reply).csv",
+          "posts.csv",
+          "replies.csv"
+        ]
+      },
+      "logs": {
+        "files": ["log.txt"]
+      },
+      "models": {
+        "files": ["Actor.js", "Notification.js", "Script.js", "User.js"]
+      },
+      "test": {
+        "files": ["app.js", "models.js"]
+      },
+      "views": {
+        "directories": {
+          "account": {
+            "files": [
+              "forgot.pug",
+              "login.pug",
+              "profile.pug",
+              "signup.pug",
+              "signup_info.pug"
+            ]
+          },
+          "partials": {
+            "files": [
+              "actorPost.pug",
+              "ui_flash.pug",
+              "ui_header.pug",
+              "userCard.pug",
+              "userPost.pug"
+            ]
+          }
+        },
+        "files": [
+          "actor.pug",
+          "actors.pug",
+          "com.pug",
+          "completed.pug",
+          "error.pug",
+          "info.pug",
+          "me.pug",
+          "notification.pug",
+          "script.pug",
+          "test.pug",
+          "tos.pug",
+          "ui_layout.pug"
+        ]
+      }
+    }
+  }
+}
