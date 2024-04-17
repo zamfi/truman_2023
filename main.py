@@ -1,3 +1,4 @@
+from typing import Coroutine
 import fire
 import re
 import json
@@ -19,7 +20,7 @@ from metagpt.rag.schema import (
     LLMRankerConfig,
 )
 
-from metagpt.const import DOCS_ROOT
+from metagpt.const import DOCS_ROOT, TRUMAN_ROOT
 
 KNOWLEDGE_BASE_PATH = DOCS_ROOT / "knowledge_base.json"
 FILE_STRUC_PATH = DOCS_ROOT / "file_structure.json"
@@ -89,7 +90,7 @@ class ProjectManager(Role):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.set_actions([AnalzeRequirement])
-        self._watch([UserRequirement, WriteSpec])
+        self._watch([UserRequirement])
 
     async def _act(self) -> Message:
         logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
@@ -184,7 +185,7 @@ class RAGEngine:
 
         nodes = await self.engine.aretrieve(question)
         self._print_retrieve_result(nodes)
-        print("DEBUG:", question)
+        # print("DEBUG:", question)
         answer = await self.engine.aquery(question)
         self._print_query_result(answer)
         return answer
@@ -258,15 +259,15 @@ class WritePlan(Action):
 
     ## Format Example: {FORMAT_EXAMPLE}
     ---
-    Role: You are a TechLead of a web application 'Truman Platform'. You are receiving a requirement from a project manager. Your task is to develop an implementation plan for the interface change the project manager wants to make based on the identified relevant files. This plan should be detailed enough for a developer to implement.
+    Role: You are a TechLead of a web application 'Truman Platform'. You are receiving a requirement from a project manager. Your task is to develop an implementation plan for the interface change the project manager wants to make based on the identified relevant files (exclude the files with 'Optinal' tag). This plan should be detailed enough for a developer to implement. 
     ATTENTION: Use '##' to SPLIT SECTIONS, not '#'.
-
+    # Implementation Plan: Provided as Python list[list[str]]. Output the implementation plan. Each item in the list should be a list of two strings: the first string is the path to the file that needs to be modified, and the second string is the plan for that file.
     output a properly formatted JSON, wrapped inside [CONTENT][/CONTENT] like Format Example, and only output the json inside this tag, nothing else.
     """
 
     FORMAT_EXAMPLE: str = """
     [CONTENT]
-    ""Implementation Plan": [["PATH/TO/FILE", "Plan"], ["PATH/TO/FILE", "Plan"], ["PATH/TO/FILE", "Plan"], ...]
+    "Implementation Plan": [["PATH/TO/FILE", "Plan"], ["PATH/TO/FILE", "Plan"], ["PATH/TO/FILE", "Plan"], ...]
     [/CONTENT]
     """
 
@@ -314,7 +315,7 @@ class TechLead(Role):
             contexts = self.get_memories(k=2) # find the most k recent messages
             requirement = contexts[0].content
             files = contexts[1].content
-            print("DEBUG:",requirement, files)
+            # print("DEBUG:",requirement, files)
             result = await todo.run(requirement=requirement, files=files)
             msg = Message(content=result, role=self.profile, cause_by=type(todo))
             self.rc.memory.add(msg)
@@ -323,16 +324,41 @@ class TechLead(Role):
 class WriteCode(Action):
 
     PROMPT_FORMAT: str = """
+    ## File Name: {name}
+    ## File content: {file_content}
     ## Implementation plan: {impl_plan}
     ---
     Role: You are a senior software developer. The main goal is to write PEP8 compliant, elegant, modular, easy to read and maintain code based on the TechLead's implementation plan.
+
+    ## File Name: Provided as Python str. Output the file name.
+
+    ## Code: Provided as Python str. Output the code snippet.
+
+    ## Location: Provided as Python str. Output the location of the code snippet in the file.
+
+    output only the generated code snippet as a properly formatted JSON, wrapped inside [CONTENT][/CONTENT] like format example,
+    and only output the json inside this tag, nothing else
+    """
+
+    FORMAT_EXAMPLE: str = """
+    [CONTENT]
+    "File Name": "",
+    "Code": "",
+    "Location": ""
+    [/CONTENT]
     """
     name: str = "WriteCode"
 
     async def run(self, plan):
-        prompt = self.PROMPT_FORMAT.format(impl_plan=plan)
-        rsp = await self._aask(prompt)
-        return rsp
+        output = []
+        for p in plan:
+            with open(TRUMAN_ROOT / p[0], "r") as f:
+                file_content = f.read()
+            prompt = self.PROMPT_FORMAT.format(name=p[0], file_content=file_content, impl_plan=p[1])
+            rsp = await self._aask(prompt)
+            output.append(rsp)
+        return f'{output}'
+
 
 class Developer(Role):
     name: str = "Dev"
@@ -343,9 +369,18 @@ class Developer(Role):
         self.set_actions([WriteCode])
         self._watch([WritePlan])
 
+    async def _act(self) -> Message:
+        logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
+        todo = self.rc.todo
+        contexts = self.get_memories(k=1)
+        plans = parse_data(contexts[0].content)["Implementation Plan"]
+        result = await todo.run(plan=plans)
+        msg = Message(content=result, role=self.profile, cause_by=type(todo))
+        self.rc.memory.add(msg)
+        return msg
 
 async def main(
-    # msg: str = "Add a grey box above each comment box in actor post. The grey box include a feeling prompt question: “How is Jane Done feeling?”. Each prompt was customized by the poster's name. ",
+    msg: str = "Add a grey box above each comment box in actor post. The grey box include a feeling prompt question: “How is Jane Done feeling?”. Each prompt was customized by the poster's name. ",
     
     # msg: str = "When a user creates an account, randomly assign them to one of 6 experimental conditions: 'view:large', 'view:small', 'view:none', 'none:large', 'none:small', 'none:none'. This information should not be displayed to the user.",
 
@@ -373,9 +408,9 @@ async def main(
     # 2. If the user is in the experimental group "view:large", "none:large", "view:small" or "none:small", then at the bottom right of each post (below the picture but above the reply, flag, share, like buttons), display a small check icon and the text "Seen by #" next to it. The # should be replaced by the post's large view count if the user is in the experimental group "view:large" or "none:large" or by post's small view count if the user is in the experimental group "view:small" or "none:small".
     # """,
 
-    msg: str = """
-    If the user is in the experimental group "view: large", "view:small", or "view:none", then for each post, when they scroll past the post, display an opaque overlay over the post. This overlay should have the following: a large eye icon, the text "You've read this!", and a black button "Read Again?". If the user is in the experimental group "view:large" or "view:small", the overlay should also display the original poster's profile photo alongside text that says "Jane Doe" has been notified, where "Jane Doe" is replaced with the orignal poster's name. All these items should appear one above another and centered on the overlay. When the "Read Again?" button is clicked, the overlay should fade away so the user can see the post again.
-    """,
+    # msg: str = """
+    # If the user is in the experimental group "view: large", "view:small", or "view:none", then for each post, when they scroll past the post, display an opaque overlay over the post. This overlay should have the following: a large eye icon, the text "You've read this!", and a black button "Read Again?". If the user is in the experimental group "view:large" or "view:small", the overlay should also display the original poster's profile photo alongside text that says "Jane Doe" has been notified, where "Jane Doe" is replaced with the orignal poster's name. All these items should appear one above another and centered on the overlay. When the "Read Again?" button is clicked, the overlay should fade away so the user can see the post again.
+    # """,
         
     # msg: str = """
     # After a user signs up for the platform and views the community rules, add a page that allows users to choose 2 cuisines out of a list of 5 (Cajun, Asian, American, Italian, Mexican). Display the text: "Choose 2 cuisines you are interested in for a more personalized newsfeed" above the selection form. Record the user's selection. Only display the posts with labels matching the user's selection in the newsfeed.
@@ -395,7 +430,7 @@ async def main(
             ProjectManager(),
             SpecWriter(is_human=add_human),
             TechLead(),
-            # Developer()
+            Developer()
         ]
     )
 
