@@ -250,7 +250,6 @@ async function doPopulate() {
                         }
                         // Return response
                         console.log(color_success, "All replies added to database!");
-                        mongoose.connection.close();
                         resolve('Promise is resolved successfully.');
                         return 'Loaded Replies';
                     }
@@ -295,7 +294,7 @@ async function doPopulate() {
                             console.log(color_error, "ERROR: Something went wrong with saving notifications(replies) in database");
                         }
                         // Return response
-                        console.log(color_success, "All notifications(replies) added to database!")
+                        console.log(color_success, "All notifications(replies) added to database!");
                         resolve('Promise is resolved successfully.');
                         return 'Loaded Notifications';
                     }
@@ -344,7 +343,8 @@ async function doPopulate() {
                             callback(err);
                         }
                         // Return response
-                        console.log(color_success, "All notifications added to database!")
+                        console.log(color_success, "All notifications added to database!");
+                        mongoose.connection.close();
                         resolve('Promise is resolved successfully.');
                         return 'Loaded Notifications';
                     }
