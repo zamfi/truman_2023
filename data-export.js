@@ -100,6 +100,9 @@ async function getDataExport() {
 
         //For each post (feedAction)
         for (const feedAction of user.feedAction) {
+            if (user.feedAction.post == null) {
+                continue;
+            }
             if (feedAction.liked) {
                 NumActorPostsLiked++;
                 ActorPostsLiked.push(feedAction.post.postID);
@@ -118,14 +121,18 @@ async function getDataExport() {
 
             const CommentsLiked_list = feedAction.comments.filter(comment => !comment.new_comment && comment.liked);
             NumActorCommentsLiked += CommentsLiked_list.length;
-            for (const likedComment of CommentsLiked_list) {
-                ActorCommentsLiked.push(feedAction.post.comments.find(comment => likedComment.comment.equals(comment._id)).commentID);
+            if (NumActorCommentsLiked > 0) {
+                for (const likedComment of CommentsLiked_list) {
+                    ActorCommentsLiked.push(feedAction.post.comments.find(comment => likedComment.comment.equals(comment._id)).commentID);
+                }
             }
 
             const CommentsFlagged_list = feedAction.comments.filter(comment => !comment.new_comment && comment.flagged);
             NumActorCommentsFlagged += CommentsFlagged_list.length;
-            for (const flaggedComment of CommentsFlagged_list) {
-                ActorCommentsFlagged.push(feedAction.post.comments.find(comment => flaggedComment.comment.equals(comment._id)).commentID);
+            if (NumActorCommentsFlagged > 0) {
+                for (const flaggedComment of CommentsFlagged_list) {
+                    ActorCommentsFlagged.push(feedAction.post.comments.find(comment => flaggedComment.comment.equals(comment._id)).commentID);
+                }
             }
         }
 
