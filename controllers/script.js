@@ -29,7 +29,7 @@ exports.getScript = async(req, res, next) => {
                     if (err) console.log('Error : Failed to destroy the session during logout.', err);
                     req.user = null;
                     req.flash('errors', { msg: 'Account is no longer active. Study is over.' });
-                    res.redirect('/login');
+                    res.redirect('/login' + (req.query.r_id ? `?r_id=${req.query.r_id}` : ""));
                 });
             });
         }

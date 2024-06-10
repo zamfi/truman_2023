@@ -1,12 +1,12 @@
 .computer.only.tablet.only.row 
   .ui.borderless.fixed.menu
     .ui.container
-      a.item(href= user===undefined ? '/' : (user.consent ? "/": "#"))
+      a.item(href= user===undefined ? (process.env.POST_SURVEY_WITH_QUALTRICS ? `/?r_id=${r_id}`: '/' ): (user.consent ? "/": "#"))
         img.ui.tiny.image(src=process.env.SITE_LOGO, id='logo')
       .right.menu
         if !user
-          a.item(href='/login') Log In
-          a.item(href='/signup') Create Account
+          a.item(href=process.env.POST_SURVEY_WITH_QUALTRICS ? `/login?r_id=${r_id}`: '/login') Log In
+          a.item(href=process.env.POST_SURVEY_WITH_QUALTRICS ? `/signup?r_id=${r_id}`: '/signup') Create Account
         else
           if user.consent
             if(showNewPostIcon)
@@ -33,11 +33,11 @@
               a.item.logoutLink Log Out
 .mobile.only.row
   .ui.fluid.top.fixed.four.item.menu
-    a.item(href=user===undefined ? '/' : (user.consent ? "/": "#"))
+    a.item(href=user===undefined ? (process.env.POST_SURVEY_WITH_QUALTRICS ? `/?r_id=${r_id}`: '/' ): (user.consent ? "/": "#"))
       img.ui.tiny.image(src=process.env.SITE_LOGO, id='mobile_logo')
     if !user
-      a.item(href='/login') Log In
-      a.item(href='/signup') Create Account
+      a.item(href=process.env.POST_SURVEY_WITH_QUALTRICS ? `/login?r_id=${r_id}`: '/login') Log In
+      a.item(href=process.env.POST_SURVEY_WITH_QUALTRICS ? `/signup?r_id=${r_id}`: '/signup') Create Account
     else
       if user.consent
         if(showNewPostIcon)

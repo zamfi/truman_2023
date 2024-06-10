@@ -6,7 +6,7 @@ block content
   .eight.wide.computer.eight.wide.tablet.sixteen.wide.mobile.column
     .ui.card.fluid(style="padding: 20px; margin-top: 90px;")
       h2.ui.header Sign Up
-      form.ui.form(id='signup-form', action='/signup', method='POST')
+      form.ui.form(id='signup-form', action=(process.env.POST_SURVEY_WITH_QUALTRICS ? `/signup?r_id=${r_id}`: '/signup'), method='POST')
         input(type='hidden', name='_csrf', value=_csrf)
         .field
           label(for='username') Username
