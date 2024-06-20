@@ -39,6 +39,7 @@ exports.getScript = async(req, res, next) => {
         const current_day = Math.floor(time_diff / one_day);
         if (current_day < process.env.NUM_DAYS) {
             user.study_days[current_day] += 1;
+            user.save();
         }
 
         // Array of actor posts that match the user's experimental condition, within the past 24 hours, sorted by descending time. 
@@ -60,7 +61,6 @@ exports.getScript = async(req, res, next) => {
         // Get the newsfeed and render it.
         const finalfeed = helpers.getFeed(user_posts, script_feed, user, process.env.FEED_ORDER, true);
         console.log("Script Size is now: " + finalfeed.length);
-        await user.save();
         res.render('script', { script: finalfeed, showNewPostIcon: true });
     } catch (err) {
         next(err);
