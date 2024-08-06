@@ -5,6 +5,28 @@
 
 /* CSS for Actor and User Posts */
 
+
+/* POST */
+
+.ui.fluid.card>.content.dimmable>.image {
+    position: relative;
+    display: block;
+    -webkit-box-flex: 0;
+    -ms-flex: 0 0 auto;
+    flex: 0 0 auto;
+    padding: 0;
+    background: rgba(0, 0, 0, .05);
+    margin: -1em -1em 0 -1em;
+}
+
+.ui.fluid.card>.content.dimmable>.image>img {
+    width: 100%;
+}
+
+.ui.fluid.card>.content.dimmable>.description {
+    padding-top: 1em;
+}
+
 .ui[class*="bottom attached"].buttons .button:first-child {
     border-radius: 0 !important;
 }
@@ -13,8 +35,16 @@
     border-radius: 0 !important;
 }
 
+
+/* COMMMENT */
+
 .ui.comments .comment .text {
     margin: 0.25em 0;
+}
+
+.comment .content.hidden,
+.comment a.avatar.hidden {
+    display: none !important;
 }
 
 

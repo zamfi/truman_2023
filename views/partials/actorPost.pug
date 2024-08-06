@@ -1,21 +1,23 @@
-.ui.fluid.card.dim(postClass=val.class, postID=val.id, type='actor', actor_un = val.actor.username, actor_name = val.actor.profile.name, actor_pic = val.actor.profile.picture)
-  //- dimmer DIV for flagging
-  .ui.dimmer.flag
-    .content
-      .center
-        h2.ui.inverted.icon.header
-          i.red.flag.icon
-          |  You've flagged this!
-          h3.ui.inverted.header
-            span="The admins will review this post further. We are sorry you had this experience."
+.ui.fluid.card(postClass=val.class, postID=val.id, type='actor', actor_un = val.actor.username, actor_name = val.actor.profile.name, actor_pic = val.actor.profile.picture)
   .content
     .right.floated.time.meta= (user.createdAt.getTime() + val.time)
     a(href='/user/'+val.actor.username)     
       img.ui.avatar.image(src='/public/picture.svg', data-src=cdn+"/profile_pictures/"+val.actor.profile.picture)
       span=val.actor.profile.name
-  .img.post.image
-    img(src='/public/picture.svg', data-src=cdn+"/post_pictures/"+val.picture, style="max-width:100%; width:100%;")
-  .content
+  .content.dimmable(class=val.flagged ? "dimmed": "")
+    .ui.dimmer.flag(class=val.flagged ? "active": "")
+      .content
+        .center
+          h2.ui.inverted.icon.header
+            i.red.flag.icon
+            | You've flagged this!
+            h3.ui.inverted.header
+                span="The admins will review this post further. We are sorry you had this experience."
+          .ui.inverted.unflag.button(tabindex='0')
+            i.flag.icon
+            |  Unflag
+    .img.post.image
+      img(src='/public/picture.svg', data-src=cdn+"/post_pictures/"+val.picture, style="max-width:100%; width:100%;")
     .description=val.body
     .myTimer.hidden 0
   .ui.bottom.three.attached.icon.buttons
@@ -26,7 +28,7 @@
       i.flag.icon
       |  Flag
     .ui.labeled.button(tabindex='0')
-      .ui.like.button(class=val.like? "red": null)
+      .ui.like.button(class=val.liked? "red": null)
         i.heart.icon
         |  Like
       a.ui.basic.red.left.pointing.label.count=val.likes
@@ -56,9 +58,13 @@
           //- Else this is a normal comment from the script
           else
             .comment(commentID=comment.id)
-              a.avatar(href='/user/'+comment.actor.username)                     
+              .content(class=!comment.flagged ? "transition hidden" : "")                           
+                .text(style="background-color: black; color: white; padding: 0.2em;")  You flagged this comment. The admins will review this comment further. We are sorry you had this experience.
+                .actions 
+                  a.unflag Unflag
+              a.avatar(href='/user/'+comment.actor.username, class=comment.flagged ? "transition hidden" : "")                  
                 img(src='/public/picture.svg', data-src=cdn+"/profile_pictures/"+comment.actor.profile.picture)
-              .content
+              .content(class=comment.flagged ? "transition hidden" : "")
                 a.author(href='/user/'+comment.actor.username)=comment.actor.profile.name
                 .metadata
                   span.date=(user.createdAt.getTime() + comment.time)

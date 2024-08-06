@@ -101,7 +101,7 @@ $(window).on("load", function() {
     });
 
     // Lazy loading of images on site
-    $(`#content .fluid.card .img img, #content img.ui.avatar.image, #content a.avatar img`).visibility({
+    $(`#content .fluid.card .img img, #content img.ui.avatar.image, #content a.avatar img, .ui.card .image img`).visibility({
         type: 'image'
     });
 });

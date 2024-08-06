@@ -107,16 +107,18 @@ const userSchema = new mongoose.Schema({
         flagged: { type: Boolean, default: false }, // Indicates if the user has flagged the post
         likeTime: [Date], // List of absolute times when the user has liked the post
         unlikeTime: [Date], // List of absolute times when the user has unliked the post
-        flagTime: [Date], // List of absolute times when the user has flagged  the post
+        flagTime: [Date], // List of absolute times when the user has flagged the post
+        unflagTime: [Date], // List of absolute times when the user has unflagged the post
         readTime: [Number], // List of durations the user spent looking at the post in milliseconds (we do not record times less than 1.5 seconds and more than 24 hrs)
 
         comments: [new Schema({
             comment: { type: Schema.ObjectId }, // The unique ID for the comment within the post within the database, the comment the user interacted with
             liked: { type: Boolean, default: false }, // Indicates if the user has liked the comment
             flagged: { type: Boolean, default: false }, // Indicates if the user has flagged the comment
-            likeTime: [Date], // List of absolute times when the user has liked the post
-            unlikeTime: [Date], // List of absolute times when the user has unliked the post
-            flagTime: [Date], // List of absolute times when the user has flagged the post
+            likeTime: [Date], // List of absolute times when the user has liked the comment
+            unlikeTime: [Date], // List of absolute times when the user has unliked the comment
+            flagTime: [Date], // List of absolute times when the user has flagged the comment
+            unflagTime: [Date], // List of absolute times when the user has unflagged the comment
             new_comment: { type: Boolean, default: false }, // Indicates if this comment is made by the user
             new_comment_id: Number, // ID for the comment if this comment is made by the user
             body: String, // Body (text) of the comment if this comment is made by the user

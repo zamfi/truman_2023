@@ -98,6 +98,14 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                                 }
                                 // Check if this comment has been flagged by the user. If true, remove the comment from the post.
                                 if (commentObject.flagged) {
+                                    if (removeFlaggedContent) {
+                                        script_feed[0].comments.splice(commentIndex, 1);
+                                    } else {
+                                        script_feed[0].comments[commentIndex].flagged = true;
+                                    }
+                                }
+                                // Check if this comment is by a blocked user: If true and removedBlockedUserContent is true, remove the comment.
+                                if (user.blocked.includes(script_feed[0].comments[commentIndex].actor.username) && removedBlockedUserContent) {
                                     script_feed[0].comments.splice(commentIndex, 1);
                                 }
                             }
@@ -113,16 +121,16 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                 // Now we are looking at the main post.
                 // Check if this post has been liked by the user. If true, update the post.
                 if (user.feedAction[feedIndex].liked) {
-                    script_feed[0].like = true;
+                    script_feed[0].liked = true;
                     script_feed[0].likes++;
                 }
-                // Check if this post has been flagged by the user: If true and removeFlaggedContent is true, remove the post.
-                if (user.feedAction[feedIndex].flagTime[0]) {
-                    if (removeFlaggedContent) {
-                        script_feed.splice(0, 1);
-                    } else {
-                        script_feed[0].flagged = true;
-                    }
+                // Check if this post has been flagged by the user. If true, update the post.
+                if (user.feedAction[feedIndex].flagged) {
+                    script_feed[0].flagged = true;
+                }
+                // Check if removeFlaggedContent is true, remove the post.
+                if (user.feedAction[feedIndex].flagged && removeFlaggedContent) {
+                    script_feed.splice(0, 1);
                 } // Check if this post is by a blocked user: If true and removedBlockedUserContent is true, remove the post.
                 else if (user.blocked.includes(script_feed[0].actor.username) && removedBlockedUserContent) {
                     script_feed.splice(0, 1);

@@ -24,6 +24,7 @@ const scriptSchema = new mongoose.Schema({
 
         new_comment: { type: Boolean, default: false }, // T/F; indicates if the comment is by the user
         liked: { type: Boolean, default: false }, // T/F; indicates if the comment is liked by the user
+        flagged: { type: Boolean, default: false }, // T/F; indicates if the comment is flagged by the user
     }, { versionKey: false })]
 }, { versionKey: false });
 

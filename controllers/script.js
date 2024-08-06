@@ -59,7 +59,7 @@ exports.getScript = async(req, res, next) => {
         });
 
         // Get the newsfeed and render it.
-        const finalfeed = helpers.getFeed(user_posts, script_feed, user, process.env.FEED_ORDER, true);
+        const finalfeed = helpers.getFeed(user_posts, script_feed, user, process.env.FEED_ORDER, (process.env.REMOVE_FLAGGED_CONTENT == 'TRUE'), true);
         console.log("Script Size is now: " + finalfeed.length);
         res.render('script', { script: finalfeed, showNewPostIcon: true });
     } catch (err) {
@@ -202,14 +202,28 @@ exports.postUpdateFeedAction = async(req, res, next) => {
                 user.feedAction[feedIndex].comments[commentIndex].flagTime.push(flag);
                 user.feedAction[feedIndex].comments[commentIndex].flagged = true;
             }
+
+            // User unflagged the comment.
+            else if (req.body.unflag) {
+                const unflag = req.body.unflag;
+                user.feedAction[feedIndex].comments[commentIndex].unflagTime.push(unflag);
+                user.feedAction[feedIndex].comments[commentIndex].flagged = false;
+            }
         }
         // User interacted with the post.
         else {
             // User flagged the post.
             if (req.body.flag) {
                 const flag = req.body.flag;
-                user.feedAction[feedIndex].flagTime = [flag];
+                user.feedAction[feedIndex].flagTime.push(flag);
                 user.feedAction[feedIndex].flagged = true;
+            }
+
+            // User unflagged the post.
+            else if (req.body.unflag) {
+                const unflag = req.body.unflag;
+                user.feedAction[feedIndex].unflagTime.push(unflag);
+                user.feedAction[feedIndex].flagged = false;
             }
 
             // User liked the post.

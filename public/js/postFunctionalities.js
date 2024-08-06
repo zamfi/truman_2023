@@ -5,7 +5,7 @@ function likePost(e) {
     const postClass = target.closest(".ui.fluid.card").attr("postClass");
     const currDate = Date.now();
 
-    if (target.hasClass("red")) { //Unlike Post
+    if (target.hasClass("red")) { // Unlike Post
         target.removeClass("red");
         label.html(function(i, val) { return val * 1 - 1 });
 
@@ -22,7 +22,7 @@ function likePost(e) {
                 postClass: postClass,
                 _csrf: $('meta[name="csrf-token"]').attr('content')
             });
-    } else { //Like Post
+    } else { // Like Post
         target.addClass("red");
         label.html(function(i, val) { return val * 1 + 1 });
 
@@ -44,7 +44,7 @@ function likePost(e) {
 
 function flagPost(e) {
     const target = $(e.target);
-    const post = target.closest(".ui.fluid.card.dim");
+    const post = target.closest(".ui.fluid.card");
     const postID = post.attr("postID");
     const postClass = target.closest(".ui.fluid.card").attr("postClass");
     const flag = Date.now();
@@ -55,9 +55,23 @@ function flagPost(e) {
         postClass: postClass,
         _csrf: $('meta[name="csrf-token"]').attr('content')
     });
-    post.find(".ui.dimmer.flag").dimmer({ closable: false }).dimmer('show');
-    //repeat to ensure its closable
-    post.find(".ui.dimmer.flag").dimmer({ closable: false }).dimmer('show');
+    post.find(".ui.dimmer.flag").dimmer({ closable: true }).dimmer('show');
+}
+
+function unflagPost(e) {
+    const target = $(e.target);
+    const post = target.closest(".ui.fluid.card");
+    const postID = post.attr("postID");
+    const postClass = target.closest(".ui.fluid.card").attr("postClass");
+    const unflag = Date.now();
+
+    $.post("/feed", {
+        postID: postID,
+        unflag: unflag,
+        postClass: postClass,
+        _csrf: $('meta[name="csrf-token"]').attr('content')
+    });
+    target.closest(".ui.fluid.card").find(".ui.dimmer.flag").removeClass("active").dimmer({ closable: true }).dimmer('hide');
 }
 
 function likeComment(e) {
@@ -71,7 +85,7 @@ function likeComment(e) {
     const isUserComment = comment.find("a.author").attr('href') === '/me';
     const currDate = Date.now();
 
-    if (target.hasClass("red")) { //Unlike comment
+    if (target.hasClass("red")) { // Unlike comment
         target.removeClass("red");
         comment.find("i.heart.icon").removeClass("red");
         target.html('Like');
@@ -95,7 +109,7 @@ function likeComment(e) {
                 _csrf: $('meta[name="csrf-token"]').attr('content')
             });
         }
-    } else { //Like comment
+    } else { // Like comment
         target.addClass("red");
         comment.find("i.heart.icon").addClass("red");
         target.html('Unlike');
@@ -123,16 +137,18 @@ function likeComment(e) {
 
 function flagComment(e) {
     const target = $(e.target);
-    const comment = target.parents(".comment");
+    const commentElement = target.parents(".comment");
     const postID = target.closest(".ui.fluid.card").attr("postID");
     const postClass = target.closest(".ui.fluid.card").attr("postClass");
-    const commentID = comment.attr("commentID");
-    comment.replaceWith(`
-        <div class="comment" commentID="${commentID}" style="background-color:black;color:white">
-            <h5 class="ui inverted header" style="padding-bottom: 0.5em; padding-left: 0.5em;">
-                The admins will review this comment further. We are sorry you had this experience.
-            </h5>
-        </div>`);
+    const commentID = commentElement.attr("commentID");
+
+    const comment_imageElement = commentElement.children('a.avatar');
+    const comment_contentElement = commentElement.children('.content');
+    const flaggedComment_contentElement = commentElement.children('.content.hidden');
+
+    comment_imageElement.transition('hide');
+    comment_contentElement.transition('hide');
+    $(flaggedComment_contentElement).transition();
     const flag = Date.now();
 
     if (target.closest(".ui.fluid.card").attr("type") == 'userPost')
@@ -147,13 +163,42 @@ function flagComment(e) {
         });
 }
 
+function unflagComment(e) {
+    const target = $(e.target);
+    const commentElement = target.parents(".comment");
+    const postID = target.closest(".ui.fluid.card").attr("postID");
+    const postClass = target.closest(".ui.fluid.card").attr("postClass");
+    const commentID = commentElement.attr("commentID");
+
+    const comment_imageElement = commentElement.children('a.avatar.hidden');
+    const comment_contentElement = commentElement.children('.content.hidden');
+    const flaggedComment_contentElement = commentElement.children('.content:not(.hidden)');
+
+    $(flaggedComment_contentElement).transition('hide');
+    comment_imageElement.transition();
+    comment_imageElement.find("img").visibility('refresh');
+    comment_contentElement.transition();
+    const unflag = Date.now();
+
+    if (target.closest(".ui.fluid.card").attr("type") == 'userPost')
+        console.log("Should never be here.")
+    else
+        $.post("/feed", {
+            postID: postID,
+            commentID: commentID,
+            unflag: unflag,
+            postClass: postClass,
+            _csrf: $('meta[name="csrf-token"]').attr('content')
+        });
+}
+
 function addComment(e) {
     const target = $(e.target);
     const text = target.siblings(".ui.form").find("textarea.newcomment").val().trim();
     const card = target.parents(".ui.fluid.card");
     let comments = card.find(".ui.comments");
     const postClass = target.closest(".ui.fluid.card").attr("postClass");
-    //no comments area - add it
+    // no comments area - add it
     if (!comments.length) {
         const buttons = card.find(".ui.bottom.attached.icon.buttons")
         buttons.after('<div class="content"><div class="ui comments"></div>');
@@ -211,7 +256,7 @@ function addComment(e) {
 function followUser(e) {
     const target = $(e.target);
     const username = target.attr('actor_un');
-    if (target.text().trim() == "Follow") { //Follow Actor
+    if (target.text().trim() == "Follow") { // Follow Actor
         $(`.ui.basic.primary.follow.button[actor_un='${username}']`).each(function(i, element) {
             const button = $(element);
             button.text("Following");
@@ -221,7 +266,7 @@ function followUser(e) {
             followed: username,
             _csrf: $('meta[name="csrf-token"]').attr('content')
         })
-    } else { //Unfollow Actor
+    } else { // Unfollow Actor
         $(`.ui.basic.primary.follow.button[actor_un='${username}']`).each(function(i, element) {
             const button = $(element);
             button.text("Follow");
@@ -235,7 +280,7 @@ function followUser(e) {
 }
 
 $(window).on('load', () => {
-    //add humanized time to all posts
+    // add humanized time to all posts
     $('.right.floated.time.meta, .date').each(function() {
         const ms = parseInt($(this).text(), 10);
         const time = new Date(ms);
@@ -258,23 +303,29 @@ $(window).on('load', () => {
         }
     });
 
-    //Create a new Comment
+    // Create a new Comment
     $("i.big.send.link.icon").on('click', addComment);
 
-    //Like/Unlike Post
+    // Like/Unlike Post
     $('.like.button').on('click', likePost);
 
-    //Flag Post
+    // Flag Post
     $('.flag.button').on('click', flagPost);
+
+    // Unflag Post
+    $(".unflag.button").click(unflagPost);
 
     // ************ Actions on Comments***************
     // Like/Unlike comment
     $('a.like.comment').on('click', likeComment);
 
-    //Flag comment
+    // Flag comment
     $('a.flag.comment').on('click', flagComment);
 
-    //Follow button
+    // Unflag comment
+    $("a.unflag").click(unflagComment);
+
+    // Follow button
     $('.ui.basic.primary.follow.button').on('click', followUser);
 
     // Track how long a post is on the screen (borders are defined by image)
@@ -284,12 +335,12 @@ $(window).on('load', () => {
         once: false,
         continuous: false,
         observeChanges: true,
-        //throttle:100,
+        // throttle:100,
         initialCheck: true,
         offset: 50,
 
-        //Handling scrolling down like normal
-        //Called when bottomVisible turns true (bottom of a picture is visible): bottom can enter from top or bottom of viewport
+        // Handling scrolling down like normal
+        // Called when bottomVisible turns true (bottom of a picture is visible): bottom can enter from top or bottom of viewport
         onBottomVisible: function(element) {
             var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
             // Bottom of picture enters from bottom (scrolling down the feed; as normal)
@@ -298,17 +349,17 @@ $(window).on('load', () => {
                 if (startTime == 0) {
                     var startTime = Date.now();
                 }
-            } else { //Scrolling up and this event does not matter, since entire photo isn't visible anyways.
+            } else { // Scrolling up and this event does not matter, since entire photo isn't visible anyways.
                 var startTime = 0;
             }
             $(this).siblings(".content").children(".myTimer").text(startTime);
         },
 
-        //Element's bottom edge has passed top of the screen (disappearing); happens only when Scrolling Up
+        // Element's bottom edge has passed top of the screen (disappearing); happens only when Scrolling Up
         onBottomPassed: function(element) {
             var endTime = Date.now();
             var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
-            var totalViewTime = endTime - startTime; //TOTAL TIME HERE
+            var totalViewTime = endTime - startTime; // TOTAL TIME HERE
 
             var parent = $(this).parents(".ui.fluid.card");
             var postID = parent.attr("postID");
@@ -326,8 +377,8 @@ $(window).on('load', () => {
             }
         },
 
-        //Handling scrolling up
-        //Element's top edge has passed top of the screen (appearing); happens only when Scrolling Up
+        // Handling scrolling up
+        // Element's top edge has passed top of the screen (appearing); happens only when Scrolling Up
         onTopPassedReverse: function(element) {
             var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());
             if (element.bottomVisible && startTime == 0) { // Scrolling Up AND entire post is visible on the viewport 
@@ -338,7 +389,7 @@ $(window).on('load', () => {
 
         // Called when topVisible turns false (exits from top or bottom)
         onTopVisibleReverse: function(element) {
-            if (element.topPassed) { //Scrolling Down, disappears on top; this event doesn't matter (since it is when bottom disappears that time is stopped)
+            if (element.topPassed) { // Scrolling Down, disappears on top; this event doesn't matter (since it is when bottom disappears that time is stopped)
             } else { // False when Scrolling Up (the bottom of photo exits screen.)
                 var endTime = Date.now();
                 var startTime = parseInt($(this).siblings(".content").children(".myTimer").text());

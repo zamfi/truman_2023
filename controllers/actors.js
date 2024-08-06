@@ -2,6 +2,9 @@ const Actor = require('../models/Actor.js');
 const Script = require('../models/Script.js');
 const User = require('../models/User');
 const helpers = require('./helpers');
+const _ = require('lodash');
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' }); // See the file .env.example for the structure of .env
 
 /**
  * GET /actors
@@ -46,7 +49,7 @@ exports.getActor = async(req, res, next) => {
             .populate('comments.actor')
             .exec();
 
-        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', true, false);
+        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', (process.env.REMOVE_FLAGGED_CONTENT == 'TRUE'), false);
         await user.save();
         res.render('actor', { script: finalfeed, actor: actor, isBlocked: isBlocked, isReported: isReported, title: actor.profile.name });
     } catch (err) {
