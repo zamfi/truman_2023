@@ -24,7 +24,7 @@ exports.getNotifications = async(req, res) => {
             const currDate = Date.now();
             const lastNotifyVisit = user.lastNotifyVisit; //Absolute Date
             const notification_feed = await Notification.find({
-                    $or: [{ userPostID: { $lte: user.numPosts } }, { userReply: { $lte: user.numComments } }],
+                    $or: [{ userPostID: { $lte: user.numPosts } }, { userReplyID: { $lte: user.numComments } }],
                     class: { "$in": ["", user.experimentalCondition] }
                 })
                 .populate('actor')
@@ -109,8 +109,8 @@ exports.getNotifications = async(req, res) => {
                         } //end of LIKE or READ
                     } //end of userPost (read, like, comment)
                 } //Notification is about a userReply (read, like)
-                else if (notification.userReply >= 0) {
-                    const userReplyID = notification.userReply;
+                else if (notification.userReplyID >= 0) {
+                    const userReplyID = notification.userReplyID;
                     const userReply_userPost = user.posts.find(post => post.comments.find(comment => comment.commentID == userReplyID && comment.new_comment == true) !== undefined);
                     const userReply_actorPost_feedAction = user.feedAction.find(feedAction => feedAction.comments.find(comment => comment.new_comment_id == userReplyID && comment.new_comment == true) !== undefined);
                     let userReply_actorPost;
