@@ -124,7 +124,7 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                         script_feed[0].flagged = true;
                     }
                 } // Check if this post is by a blocked user: If true and removedBlockedUserContent is true, remove the post.
-                else if (user.blocked.includes(script_feed[0].actor.username & removedBlockedUserContent)) {
+                else if (user.blocked.includes(script_feed[0].actor.username) && removedBlockedUserContent) {
                     script_feed.splice(0, 1);
                 } else {
                     // If the post is neither flagged or from a blocked user, add it to the final feed.
@@ -143,7 +143,7 @@ exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedCo
                 }
             } // If the user has not interacted with this post:
             else {
-                if (user.blocked.includes(script_feed[0].actor.username && removedBlockedUserContent)) {
+                if (user.blocked.includes(script_feed[0].actor.username) && removedBlockedUserContent) {
                     script_feed.splice(0, 1);
                 } else {
                     if (order == 'SHUFFLE') {
