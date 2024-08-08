@@ -1,6 +1,6 @@
 The Truman Platform 2.0
 =======================
-_Updated version of The Truman Platform https://github.com/cornellsml/truman_ 
+_The original version of The Truman Platform can be found here: https://github.com/cornellsml/truman_ 
 
 Named after the 1998 film, The Truman Show, **The Truman Platform** is an open-source, complete social media simulation platform. It was developed as part of a joint effort by the [Cornell Social Media Lab (SML)](https://socialmedialab.cornell.edu/), led by former SML post-doc [Dominic DiFranzo](https://difranzo.com/), to provide researchers a community research infrastructure to conduct social media experiments in ecologically-valid realistic environments. Researchers can create different social media environments with a repertoire of features and affordances that fit their research goals and purposes, while ensuring participants have a naturalistic social media experience. 
 
