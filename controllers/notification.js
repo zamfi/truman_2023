@@ -183,6 +183,10 @@ exports.getNotifications = async(req, res) => {
                     }
                 }
             }
+            //Log our visit to Notifications
+            if (!req.query.bell) {
+                user.lastNotifyVisit = currDate;
+            }
             await user.save();
 
             final_notify.sort(function(a, b) {
@@ -201,10 +205,6 @@ exports.getNotifications = async(req, res) => {
                 .populate('comments.actor')
                 .exec();
             const finalfeed = helpers.getFeed(userPosts, posts, user, 'NOTIFICATION');
-            //Log our visit to Notifications
-            if (!req.query.bell) {
-                user.lastNotifyVisit = currDate;
-            }
 
             const newNotificationCount = final_notify.filter(notification => notification.unreadNotification == true).length;
             if (req.query.bell) {
