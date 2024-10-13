@@ -1,0 +1,2946 @@
+=== addNewAdmin.js ===
+/*
+This script is run from the command line.
+<node addNewAdmin.js [email] [username] [password]>
+
+Create a new admin account with the requested email, username, and password.
+
+This script uses the connection information from your local .env file (in line 22 or server)
+so set your local .env variables to match the database you want to connect to.
+*/
+
+const User = require('./models/User.js');
+const dotenv = require('dotenv');
+const mongoose = require('mongoose');
+
+/**
+ * Load environment variables from .env file.
+ */
+dotenv.config({ path: '.env' });
+
+/**
+ * Connect to MongoDB.
+ */
+// establish initial Mongoose connection
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true });
+// listen for errors after establishing initial connection
+mongoose.connection.on('error', (err) => {
+    console.error(err);
+    console.log('%s MongoDB connection error.');
+    process.exit(1);
+});
+
+const color_start = '\x1b[33m%s\x1b[0m'; // yellow
+const color_success = '\x1b[32m%s\x1b[0m'; // green
+const color_error = '\x1b[31m%s\x1b[0m'; // red
+
+async function addAdminToDB() {
+    // command inputs
+    const myArgs = process.argv.slice(2);
+    const email = myArgs[0]
+    const username = myArgs[1];
+    const password = myArgs[2];
+    const currDate = Date.now();
+    console.log(color_start, `Creating new admin...`);
+
+    const user = new User({
+        email: email,
+        username: username,
+        password: password,
+        active: true,
+        isAdmin: true,
+        createdAt: currDate,
+        mturkID: username,
+        consent: true
+    });
+    try {
+        const existingUser = await User.findOne({ email: email }).exec();
+        if (existingUser) {
+            console.log(color_error, `ERROR: This email is already taken.`);
+            mongoose.connection.close();
+            return;
+        }
+        await user.save();
+
+        console.log(color_success, `Account successfully created. Closing db connection.`);
+        mongoose.connection.close();
+    } catch (err) {
+        next(err);
+    }
+}
+
+addAdminToDB();
+
+=== app.js ===
+/**
+ * Module dependencies.
+ */
+const express = require('express');
+const compression = require('compression');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const logger = require('morgan');
+const errorHandler = require('errorhandler');
+const lusca = require('lusca');
+const dotenv = require('dotenv');
+const MongoStore = require('connect-mongo');
+const flash = require('express-flash');
+const path = require('path');
+const mongoose = require('mongoose');
+const passport = require('passport');
+const schedule = require('node-schedule');
+const multer = require('multer');
+const fs = require('fs');
+const util = require('util');
+fs.readFileAsync = util.promisify(fs.readFile);
+
+/**
+ * Middleware for handling multipart/form-data, which is primarily used for uploading files.
+ * Files are uploaded when user's upload their profile photos and post photos.
+ */
+var userpost_options = multer.diskStorage({
+    destination: path.join(__dirname, 'uploads/user_post'),
+    filename: function(req, file, cb) {
+        var lastsix = req.user.id.substr(req.user.id.length - 6);
+        var prefix = lastsix + Math.random().toString(36).slice(2, 10);
+        cb(null, prefix + file.originalname.replace(/[^A-Z0-9]+/ig, "_"));
+    }
+});
+var useravatar_options = multer.diskStorage({
+    destination: path.join(__dirname, 'uploads/user_avatar'),
+    filename: function(req, file, cb) {
+        var prefix = req.user.id + Math.random().toString(36).slice(2, 10);
+        cb(null, prefix + file.originalname.replace(/[^A-Z0-9]+/ig, "_"));
+    }
+});
+
+const userpostupload = multer({ storage: userpost_options });
+const useravatarupload = multer({ storage: useravatar_options });
+
+/**
+ * Load environment variables from .env file.
+ */
+dotenv.config({ path: '.env' });
+
+/**
+ * Controllers (route handlers).
+ */
+const actorsController = require('./controllers/actors');
+const scriptController = require('./controllers/script');
+const userController = require('./controllers/user');
+const notificationController = require('./controllers/notification');
+
+/**
+ * API keys and Passport configuration.
+ */
+const passportConfig = require('./config/passport');
+
+/**
+ * Create Express server.
+ */
+const app = express();
+
+/**
+ * Connect to MongoDB.
+ */
+mongoose.connect(process.env.MONGODB_URI);
+mongoose.connection.on('error', (err) => {
+    console.error(err);
+    console.log('%s MongoDB connection error. Please make sure MongoDB is running.');
+    process.exit();
+});
+
+/**
+ * Cron Jobs:
+ * Check if users are still active every 8 hours (at 4:30am, 12:30pm, and 20:30pm).
+ */
+const rule1 = new schedule.RecurrenceRule();
+rule1.hour = 4;
+rule1.minute = 30;
+const j = schedule.scheduleJob(rule1, function() {
+    userController.stillActive();
+});
+
+const rule2 = new schedule.RecurrenceRule();
+rule2.hour = 12;
+rule2.minute = 30;
+const j2 = schedule.scheduleJob(rule2, function() {
+    userController.stillActive();
+});
+
+const rule3 = new schedule.RecurrenceRule();
+rule3.hour = 20;
+rule3.minute = 30;
+const j3 = schedule.scheduleJob(rule3, function() {
+    userController.stillActive();
+});
+
+/**
+ * Express configuration.
+ */
+app.set('port', process.env.PORT || 3000);
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'pug');
+//app.use(expressStatusMonitor());
+app.use(compression());
+app.use(logger('dev'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(session({
+    resave: true,
+    saveUninitialized: true,
+    secret: process.env.SESSION_SECRET,
+    cookie: {
+        path: '/',
+        httpOnly: true,
+        secure: false,
+        maxAge: 86400000 //24 hours
+    },
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGODB_URI,
+    })
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(flash());
+app.use((req, res, next) => {
+    // Multer multipart/form-data handling needs to occur before the Lusca CSRF check.
+    // This allows us to not check CSRF when uploading an image file. It's a weird issue that multer and lusca do not play well together.
+    if ((req.path === '/post/new') || (req.path === '/account/profile') || (req.path === '/account/signup_info_post')) {
+        console.log("Not checking CSRF. Out path now");
+        next();
+    } else {
+        lusca.csrf()(req, res, next);
+    }
+});
+
+app.use(lusca.xframe('SAMEORIGIN'));
+app.use(lusca.xssProtection(true));
+app.disable('x-powered-by');
+// allow-from https://example.com/
+// add_header X-Frame-Options "allow-from https://cornell.qualtrics.com/";
+// app.use(lusca.xframe('allow-from https://cornell.qualtrics.com/'));
+app.use((req, res, next) => {
+    res.locals.user = req.user;
+    res.locals.cdn = process.env.CDN;
+    next();
+});
+
+app.use((req, res, next) => {
+    // If a user attempts to access a site page that requires logging in, but they are not logged in, then record the page they desired to visit.
+    // After successfully logging in, redirect the user back to their desired page.
+    if (!req.user &&
+        req.path !== '/login' &&
+        req.path !== '/signup' &&
+        req.path !== '/pageLog' &&
+        req.path !== '/pageTimes' &&
+        req.path !== '/notifications' &&
+        !req.path.match(/\./)) {
+        req.session.returnTo = req.originalUrl;
+    }
+    next();
+});
+
+app.use('/public', express.static(path.join(__dirname, 'public'), { maxAge: 31557600000 }));
+app.use('/semantic', express.static(path.join(__dirname, 'semantic'), { maxAge: 31557600000 }));
+app.use(express.static(path.join(__dirname, 'uploads'), { maxAge: 31557600000 }));
+app.use('/post_pictures', express.static(path.join(__dirname, 'post_pictures'), { maxAge: 31557600000 }));
+app.use('/profile_pictures', express.static(path.join(__dirname, 'profile_pictures'), { maxAge: 31557600000 }));
+
+/**
+ * Primary app routes.
+ */
+app.get('/', passportConfig.isAuthenticated, scriptController.getScript);
+
+app.post('/post/new', userpostupload.single('picinput'), scriptController.newPost);
+app.post('/pageLog', passportConfig.isAuthenticated, userController.postPageLog);
+app.post('/pageTimes', passportConfig.isAuthenticated, userController.postPageTime);
+
+app.get('/com', function(req, res) {
+    const feed = req.query.feed == "true" ? true : false; //Are we accessing the community rules from the feed?
+    res.render('com', {
+        title: 'Community Rules',
+        feed
+    });
+});
+
+app.get('/info', passportConfig.isAuthenticated, function(req, res) {
+    res.render('info', {
+        title: 'User Docs'
+    });
+});
+
+app.get('/tos', function(req, res) { res.render('tos', { title: 'Terms of Service' }); });
+
+app.get('/completed', passportConfig.isAuthenticated, userController.userTestResults);
+
+app.get('/notifications', passportConfig.isAuthenticated, notificationController.getNotifications);
+
+app.get('/login', userController.getLogin);
+app.post('/login', userController.postLogin);
+app.get('/logout', userController.logout);
+app.get('/forgot', userController.getForgot);
+app.get('/signup', userController.getSignup);
+app.post('/signup', userController.postSignup);
+
+app.get('/account', passportConfig.isAuthenticated, userController.getAccount);
+app.post('/account/password', passportConfig.isAuthenticated, userController.postUpdatePassword);
+app.post('/account/profile', passportConfig.isAuthenticated, useravatarupload.single('picinput'), userController.postUpdateProfile);
+app.get('/account/signup_info', passportConfig.isAuthenticated, function(req, res) {
+    res.render('account/signup_info', {
+        title: 'Add Information'
+    });
+});
+app.post('/account/signup_info_post', passportConfig.isAuthenticated, useravatarupload.single('picinput'), userController.postSignupInfo);
+app.post('/account/consent', passportConfig.isAuthenticated, userController.postConsent);
+
+app.get('/me', passportConfig.isAuthenticated, userController.getMe);
+app.get('/user/:userId', passportConfig.isAuthenticated, actorsController.getActor);
+app.post('/user', passportConfig.isAuthenticated, actorsController.postBlockReportOrFollow);
+app.get('/actors', passportConfig.isAuthenticated, actorsController.getActors)
+
+app.get('/feed', passportConfig.isAuthenticated, scriptController.getScript);
+app.post('/feed', passportConfig.isAuthenticated, scriptController.postUpdateFeedAction);
+app.post('/userPost_feed', passportConfig.isAuthenticated, scriptController.postUpdateUserPostFeedAction);
+app.get('/test', passportConfig.isAuthenticated, function(req, res) {
+    res.render('test', {
+        title: 'Test'
+    })
+});
+
+/**
+ * Error Handler.
+ */
+app.use(errorHandler());
+
+// Catch 404 and forward to error handler
+app.use(function(req, res, next) {
+    var err = new Error('Not Found');
+    err.status = 404;
+    next(err);
+});
+
+// Error handler
+app.use(function(err, req, res, next) {
+    // set locals, only providing error in development
+    res.locals.message = err.message;
+    res.locals.error = req.app.get('env') === 'development' ? err : {};
+
+    // Render the error page
+    res.status(err.status || 500);
+    res.render('error');
+});
+
+/**
+ * Start Express server.
+ */
+app.listen(app.get('port'), () => {
+    console.log(`App is running on http://localhost:${app.get('port')} in ${app.get('env')} mode.`);
+    console.log('  Press CTRL-C to stop\n');
+});
+module.exports = app;
+
+=== models/Notification.js ===
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const notificationSchema = new mongoose.Schema({
+    actor: { type: Schema.ObjectId, ref: 'Actor' }, // Indicates which Actor does the action
+    notificationType: String, // 3 types of action/notifications: 'like', 'read', 'reply'
+    time: Number, // Indicates when the action occurs relative to the time of the user's comment or post, in milliseconds
+
+    userPostID: Number, // Indicates which user post this action responds to (0,1,2....n)
+    userReplyID: Number, // Indicates which user reply this action responds to (0,1,2....n)
+    replyBody: { type: String, default: '', trim: true }, // Text(body) of the actor's reply
+
+    class: String, // For experimental use (If blank/null, this notification is shown to all users. If defined, this notification is shown only to users with the same value for their experimental condition)
+}, { timestamps: true });
+
+const Notification = mongoose.model('Notification', notificationSchema);
+module.exports = Notification;
+
+=== models/User.js ===
+const bcrypt = require('@node-rs/bcrypt');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' });
+
+const userSchema = new mongoose.Schema({
+    email: { type: String, unique: true },
+    password: String,
+    username: String,
+    active: { type: Boolean, default: true }, // Indicates if the user is still active
+    isAdmin: { type: Boolean, default: false }, // Indicates if the user is an administrator
+
+    endSurveyLink: String,
+
+    numPosts: { type: Number, default: -1 }, // Indicates the # of user posts the user has made. Count begins at 0.
+    numComments: { type: Number, default: -1 }, // Indicates the # of comments on (user and actor) posts the user has made. This value is used for indexing and the commentID of user comments on (user and actor) posts. Count begins at 0.
+    numActorReplies: { type: Number, default: -1 }, // Indicates the # of actor replies on user posts, it is used for indexing and the commentID of actor comments on user posts. Count begins at 0.
+
+    numPostLikes: { type: Number, default: 0 }, // Indicates the # of actor posts liked. Count begins at 1.
+    numCommentLikes: { type: Number, default: 0 }, // Indicates the # of actor comments liked. Count begins at 1.
+
+    lastNotifyVisit: Date, // Absolute Time; Indicates the most recent visit to /notifications. First initialization is at account creation.
+    createdAt: Date, // Absolute Time the user was created
+    consent: { type: Boolean, default: false }, // Indicates if user has proceeded through the Welcome & community rule pages
+
+    mturkID: { type: String, unique: true }, // MTurkID
+
+    experimentalCondition: String, // Indicates the experimental condition user is assigned to. Values are defined in the .env file by the variable EXP_CONDITIONS_NAMES and assigned at account creation in the users controller.
+
+    blocked: [String], // List of usernames of actors user has blocked
+    reported: [String], // List of usernames of actors user has reported
+    followed: [String], // List of usernames of actors user has followed
+    blockReportAndFollowLog: [new Schema({
+        time: Date, // Absolute Time of action
+        action: String, // Action taken. Values include: 'block', 'unblock', 'follow', 'unfollow', 'report'
+        report_issue: String, // If action taken is 'report', indicates the reason given. Values include: 'interested', 'spam', 'bully', 'hacked'
+        actorName: String // Username of actor action relates to
+    })],
+
+    study_days: { // Indicates how many times the user looked at the newsfeed per day
+        type: [Number],
+        default: Array(parseInt(process.env.NUM_DAYS)).fill(0)
+    }, // TODO: Update. It inaccurately +1, whenever creates a new post.
+
+    // List of User-made posts
+    posts: [new Schema({
+        type: String, // Value is always: 'user_post'
+        postID: Number, // ID for user post (0,1,2,3...)
+        body: { type: String, default: '', trim: true }, // Text(body) of post
+        picture: String, // Picture (file path) for post
+        liked: { type: Boolean, default: false }, // Indicates if the user has liked the post
+        likes: { type: Number, default: 0 }, // Indicates the number of likes on the post by actors (excludes the user's own like)
+
+        // Comments on post
+        comments: [new Schema({
+            actor: { type: Schema.ObjectId, ref: 'Actor' }, // Indicates which actor made the comment if comment is by an Actor
+            body: { type: String, default: '', trim: true }, // Text(body) of comment
+            commentID: Number, // ID of the comment
+            relativeTime: Number, // Indicates when the comment is made on the post relative to how much time has passed since the user created their account, in milliseconds
+            absTime: Date, // Absolute Time; Indicates when the comment is made on the post
+            new_comment: { type: Boolean, default: false }, // Indicates if the comment is user-made
+            liked: { type: Boolean, default: false }, // Indicates if the user has liked the comment
+            flagged: { type: Boolean, default: false }, // Indicates if the user has flagged the comment
+            likes: { type: Number, default: 0 } // Indicates the # of likes on the comment by actors (excludes the user's own like)
+        }, { versionKey: false })],
+
+        absTime: Date, // Absolute Time; Indicates the exact time the post was made
+        relativeTime: { type: Number } // Indicates when the post was made relative to how much time has passed since the user created their account, in milliseconds
+    })],
+
+    log: [new Schema({ // List of logins by the user
+        time: Date,
+        userAgent: String,
+        ipAddress: String
+    })],
+
+    pageLog: [new Schema({ // List of pages the user visits
+        time: Date,
+        page: String // URL
+    })],
+
+    pageTimes: { // Indicates how much time the user spent on the website per day where index 0 corresponds to the first day, index 1 corresopnds to the second day, etc.
+        type: [Number],
+        default: Array(parseInt(process.env.NUM_DAYS)).fill(0)
+    },
+
+    postStats: { // Statistics about the user
+        SiteVisits: Number, // Total number of times the user has logged into the website
+        GeneralTimeSpent: Number, // Time spent on website
+        GeneralPostNumber: Number, // # of posts made by user
+        GeneralPostLikes: Number, // # of posts liked
+        GeneralCommentLikes: Number, // # of comments liked
+        GeneralPostComments: Number, // # of comments left on posts
+    },
+
+    // List of actions made on actor-made posts
+    feedAction: [new Schema({
+        post: { type: Schema.ObjectId, ref: 'Script' }, // The unique ID for the post within the database, the post the user interacted with
+        postClass: String, // Indicates the type of post. Used for post classification purposes.
+        mostRecentTime: Date, // Absolute Time, indicates the most recent time the post was viewed
+        rereadTimes: { type: Number, default: 0 }, // Indicates the # of times the post has been viewed by user.
+
+        liked: { type: Boolean, default: false }, // Indicates if the user has liked the post
+        flagged: { type: Boolean, default: false }, // Indicates if the user has flagged the post
+        likeTime: [Date], // List of absolute times when the user has liked the post
+        unlikeTime: [Date], // List of absolute times when the user has unliked the post
+        flagTime: [Date], // List of absolute times when the user has flagged  the post
+        readTime: [Number], // List of durations the user spent looking at the post in milliseconds (we do not record times less than 1.5 seconds and more than 24 hrs)
+
+        comments: [new Schema({
+            comment: { type: Schema.ObjectId }, // The unique ID for the comment within the post within the database, the comment the user interacted with
+            liked: { type: Boolean, default: false }, // Indicates if the user has liked the comment
+            flagged: { type: Boolean, default: false }, // Indicates if the user has flagged the comment
+            likeTime: [Date], // List of absolute times when the user has liked the post
+            unlikeTime: [Date], // List of absolute times when the user has unliked the post
+            flagTime: [Date], // List of absolute times when the user has flagged the post
+            new_comment: { type: Boolean, default: false }, // Indicates if this comment is made by the user
+            new_comment_id: Number, // ID for the comment if this comment is made by the user
+            body: String, // Body (text) of the comment if this comment is made by the user
+            absTime: Date, // Exact time comment was made if this comment is made by the user
+            relativeTime: Number, // Indicates the time the comment was made relative to when the user created their account, in milliseconds
+            likes: { type: Number, default: 0 }, // Indicates the number of likes the comment has
+        }, { _id: true, versionKey: false })]
+    }, { _id: true, versionKey: false })],
+
+    profile: {
+        name: String,
+        location: String,
+        bio: String,
+        picture: String
+    }
+}, { timestamps: true, versionKey: false });
+
+/**
+ * Password hash middleware.
+ */
+userSchema.pre('save', async function save(next) {
+    const user = this;
+    if (!user.isModified('password')) { return next(); }
+    try {
+        user.password = await bcrypt.hash(user.password, 10);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Helper method for validating user's password.
+ */
+userSchema.methods.comparePassword = async function comparePassword(candidatePassword, cb) {
+    try {
+        cb(null, await bcrypt.verify(candidatePassword, this.password));
+    } catch (err) {
+        cb(err);
+    }
+};
+
+/**
+ * Add login instance to user.log
+ */
+userSchema.methods.logUser = async function logUser(time, agent, ip) {
+    try {
+        this.log.push({
+            time: time,
+            userAgent: agent,
+            ipAddress: ip
+        });
+        await this.save();
+    } catch (err) {
+        console.log(err);
+    }
+};
+
+/**
+ * Add page visit instance to user.pageLog
+ */
+userSchema.methods.logPage = async function logPage(time, page) {
+    try {
+        this.pageLog.push({
+            time: time,
+            page: page
+        });
+        await this.save();
+    } catch (err) {
+        console.log(err);
+    }
+};
+
+/** 
+ * Calculate stats: Basic user statistics (not comprehensive) 
+ * Also displayed in /completed (Admin Dashboard) for admin accounts.
+ */
+userSchema.methods.logPostStats = function logPage() {
+    const counts = this.feedAction.reduce(function(newCount, feedAction) {
+            const numLikes = feedAction.comments.filter(comment => comment.liked && !comment.new_comment).length;
+            const numNewComments = feedAction.comments.filter(comment => comment.new_comment).length;
+
+            newCount[0] += numLikes;
+            newCount[1] += numNewComments;
+            return newCount;
+        }, [0, 0], //[actorCommentLikes, newComments]
+    );
+
+    const log = {
+        SiteVisits: this.log.length,
+        GeneralTimeSpent: this.pageTimes.reduce((partialSum, a) => partialSum + a, 0),
+        GeneralPostNumber: this.numPosts + 1,
+        GeneralPostLikes: this.feedAction.filter(feedAction => feedAction.liked).length,
+        GeneralCommentLikes: counts[0],
+        GeneralPostComments: counts[1]
+    }
+    this.postStats = log;
+};
+
+/**
+ * Helper method for getting all User Posts.
+ */
+userSchema.methods.getPosts = function getPosts() {
+    let ret = this.posts;
+    ret.sort(function(a, b) {
+        return b.relativeTime - a.relativeTime;
+    });
+    for (const post of ret) {
+        post.comments.sort(function(a, b) {
+            return a.relativeTime - b.relativeTime;
+        });
+    }
+    return ret;
+};
+
+// Return the user post from its ID
+userSchema.methods.getUserPostByID = function(postID) {
+    return this.posts.find(x => x.postID == postID);
+};
+
+// Get user posts within the min/max time period
+userSchema.methods.getPostInPeriod = function(min, max) {
+    return this.posts.filter(function(post) {
+        return post.relativeTime >= min && post.relativeTime <= max;
+    });
+}
+
+/**
+ * Helper method for getting user's gravatar.
+ */
+userSchema.methods.gravatar = function gravatar(size) {
+    if (!size) {
+        size = 200;
+    }
+    if (!this.email) {
+        return `https://gravatar.com/avatar/?s=${size}&d=retro`;
+    }
+    const md5 = crypto.createHash('md5').update(this.email).digest('hex');
+    return `https://gravatar.com/avatar/${md5}?s=${size}&d=retro`;
+};
+
+const User = mongoose.model('User', userSchema);
+module.exports = User;
+
+=== models/Script.js ===
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const scriptSchema = new mongoose.Schema({
+    postID: Number, // ID of the post (0, 1, 2, 3, ... )
+    body: { type: String, default: '', trim: true }, // Text (body) of post
+    picture: String, // Picture (file path) for post
+    likes: Number, // Indicates the number of likes on the post (randomly assigned in populate.js)
+    actor: { type: Schema.ObjectId, ref: 'Actor' }, // Actor of post
+    time: Number, // Indicates when the post was created relative to how much time has passed since the user created their account, in milliseconds
+
+    class: String, // For experimental use (If blank/null, this post is shown to all users. If defined, this post is shown only to users with the same value for their experimental condition)
+
+    // Sorted by least recent --> most recent
+    // List of actor comments on the post
+    comments: [new Schema({
+        commentID: Number, // ID of the comment (0, 1, 2, 3, ... )
+        body: { type: String, default: '', trim: true }, // Text (body) of comment
+        likes: Number, // Indicates the number of likes on the comment (randomly assigned in populate.js)
+        actor: { type: Schema.ObjectId, ref: 'Actor' }, // Actor of comment
+        time: Number, // Indicates when the comment was created relative to how much time has passed since the user created their account, in milliseconds
+
+        class: String, // For experimental use (If blank/null, this comment is shown to all users. If defined, this comment is shown only to users with the same value for their experimental condition)
+
+        new_comment: { type: Boolean, default: false }, // T/F; indicates if the comment is by the user
+        liked: { type: Boolean, default: false }, // T/F; indicates if the comment is liked by the user
+    }, { versionKey: false })]
+}, { versionKey: false });
+
+const Script = mongoose.model('Script', scriptSchema);
+module.exports = Script;
+
+=== models/Actor.js ===
+const mongoose = require('mongoose');
+
+const actorSchema = new mongoose.Schema({
+    username: { type: String, unique: true },
+    profile: {
+        name: String,
+        gender: String,
+        age: Number,
+        location: String,
+        bio: String,
+        picture: String
+    },
+    class: String // For experimental use (can be used to define the type of actor)
+}, { timestamps: true });
+
+const Actor = mongoose.model('Actor', actorSchema);
+module.exports = Actor;
+
+=== controllers/notification.js ===
+const Script = require('../models/Script.js');
+const User = require('../models/User');
+const Notification = require('../models/Notification.js');
+const helpers = require('./helpers');
+const _ = require('lodash');
+
+/**
+ * GET /notifications, /getBell
+ * Fetch all relevant notifications. 
+ * If query parameter 'bell' is true, return the number of new/ unseen notifications.
+ * If it is false, render the notifications page.
+ */
+exports.getNotifications = async(req, res) => {
+    try {
+        if (req.user) {
+            const user = await User.findById(req.user.id)
+                .populate('posts.comments.actor')
+                .populate({
+                    path: 'feedAction.post',
+                    populate: {
+                        path: 'actor'
+                    }
+                }).exec();
+            const currDate = Date.now();
+            const lastNotifyVisit = user.lastNotifyVisit; //Absolute Date
+            const notification_feed = await Notification.find({
+                    $or: [{ userPostID: { $lte: user.numPosts } }, { userReply: { $lte: user.numComments } }],
+                    class: { "$in": ["", user.experimentalCondition] }
+                })
+                .populate('actor')
+                .sort('-time')
+                .exec();
+
+            let final_notify = [];
+            for (const notification of notification_feed) {
+                //Notification is about a userPost (read, like, comment)
+                if (notification.userPostID >= 0) {
+                    const userPostID = notification.userPostID;
+                    const userPost = user.posts.find(x => x.postID == userPostID);
+
+                    if (userPost == undefined) {
+                        console.log("Should never be here.");
+                        continue;
+                    }
+
+                    const time_diff = currDate - userPost.absTime; //Time difference between now and the time post was created.
+
+                    //check if we show this notification yet
+                    if (notification.time <= time_diff) {
+                        if (notification.notificationType == "reply") {
+                            const replyKey = "actorReply_" + userPostID;
+                            const reply_tmp = {
+                                key: replyKey,
+                                action: 'reply',
+                                postID: userPostID,
+                                body: userPost.body,
+                                picture: userPost.picture,
+                                replyBody: notification.replyBody,
+                                time: userPost.absTime.getTime() + notification.time,
+                                actor: notification.actor,
+                                unreadNotification: userPost.absTime.getTime() + notification.time > lastNotifyVisit,
+                            };
+                            final_notify.push(reply_tmp);
+                        } //end of REPLY 
+                        else {
+                            const key = notification.notificationType + "_" + userPostID; //like_X, read_X
+                            //Check if a notification for this post exists already
+                            let notifyIndex = _.findIndex(final_notify, function(o) { return o.key == key });
+                            if (notifyIndex == -1) {
+                                let tmp = {
+                                    key: key,
+                                    action: notification.notificationType,
+                                    postID: userPostID,
+                                    body: userPost.body,
+                                    picture: userPost.picture,
+                                    time: userPost.absTime.getTime() + notification.time,
+                                    actors: [notification.actor],
+                                    unreadNotification: userPost.absTime.getTime() + notification.time > lastNotifyVisit
+                                }
+                                if (notification.notificationType == 'like') {
+                                    tmp.numLikes = 1
+                                }
+                                notifyIndex = final_notify.push(tmp) - 1;
+                            } else {
+                                //Update notification like count.
+                                if (notification.notificationType == 'like') {
+                                    final_notify[notifyIndex].numLikes += 1;
+                                }
+                                //Update notification actor profile
+                                //if generic-joe, append. else, shift to the front of the line.
+                                if (notification.notificationType == "read" && notification.actor.username == "generic-joe") {
+                                    final_notify[notifyIndex].actors.push(notification.actor);
+                                } else {
+                                    final_notify[notifyIndex].actors.unshift(notification.actor);
+                                }
+                                //Update notification time and read/unread classification
+                                if ((userPost.absTime.getTime() + notification.time) > final_notify[notifyIndex].time) {
+                                    final_notify[notifyIndex].time = userPost.absTime.getTime() + notification.time;
+                                }
+                                if ((userPost.absTime.getTime() + notification.time) > lastNotifyVisit) {
+                                    final_notify[notifyIndex].unreadNotification = true;
+                                }
+                            }
+                            //Update the number of likes on user post
+                            if (notification.notificationType == 'like') {
+                                const postIndex = _.findIndex(user.posts, function(o) { return o.postID == userPostID; });
+                                user.posts[postIndex].likes = final_notify[notifyIndex].numLikes;
+                            }
+                        } //end of LIKE or READ
+                    } //end of userPost (read, like, comment)
+                } //Notification is about a userReply (read, like)
+                else if (notification.userReply >= 0) {
+                    const userReplyID = notification.userReply;
+                    const userReply_userPost = user.posts.find(post => post.comments.find(comment => comment.commentID == userReplyID && comment.new_comment == true) !== undefined);
+                    const userReply_actorPost_feedAction = user.feedAction.find(feedAction => feedAction.comments.find(comment => comment.new_comment_id == userReplyID && comment.new_comment == true) !== undefined);
+                    let userReply_actorPost;
+                    if (userReply_actorPost_feedAction) {
+                        userReply_actorPost = userReply_actorPost_feedAction.post;
+                    }
+                    const userReply_originalPost = userReply_userPost || userReply_actorPost;
+
+                    const postType = userReply_originalPost.relativeTime ? "user" : "actor";
+                    const userPostID = (postType == "user") ? userReply_originalPost.postID : userReply_originalPost._id;
+                    const userReply_comment = (postType == "user") ?
+                        userReply_originalPost.comments.find(comment => comment.commentID == userReplyID && comment.new_comment == true) :
+                        userReply_actorPost_feedAction.comments.find(comment => comment.new_comment_id == userReplyID && comment.new_comment == true);
+
+                    const time = userReply_comment.absTime.getTime();
+                    const time_diff = currDate - time; //Time difference between now and the time comment was created.
+                    //check if we show this notification yet
+                    if (notification.time <= time_diff) {
+                        const key = "reply_" + notification.notificationType + "_" + userReplyID; //reply_like_X, reply_read_X
+                        //Check if a notification for this comment exists already
+                        let notifyIndex = _.findIndex(final_notify, function(o) { return o.key == key });
+                        if (notifyIndex == -1) {
+                            let tmp = {
+                                key: key,
+                                action: "reply_" + notification.notificationType,
+                                postID: userPostID,
+                                replyID: userReplyID,
+                                body: userReply_comment.body,
+                                picture: userReply_originalPost.picture,
+                                time: time + notification.time,
+                                actors: [notification.actor],
+                                originalActor: postType == "user" ? { profile: user.profile } : userReply_originalPost.actor,
+                                unreadNotification: time + notification.time > lastNotifyVisit
+                            }
+                            if (notification.notificationType == 'like') {
+                                tmp.numLikes = 1;
+                            }
+                            notifyIndex = final_notify.push(tmp) - 1;
+                        } else {
+                            //Update notification like count.
+                            if (notification.notificationType == 'like') {
+                                final_notify[notifyIndex].numLikes += 1;
+                            }
+                            //Update notification actor profile
+                            //if generic-joe, append. else, shift to the front of the line.
+                            if (notification.notificationType == "read" && notification.actor.username == "generic-joe") {
+                                final_notify[notifyIndex].actors.push(notification.actor);
+                            } else {
+                                final_notify[notifyIndex].actors.unshift(notification.actor);
+                            }
+                            //Update notification time and read/unread classification
+                            if (time + notification.time > final_notify[notifyIndex].time) {
+                                final_notify[notifyIndex].time = time + notification.time;
+                            }
+                            if (time + notification.time > lastNotifyVisit) {
+                                final_notify[notifyIndex].unreadNotification = true;
+                            }
+                        }
+                        if (notification.notificationType == 'like') {
+                            if (postType == "user") {
+                                const postIndex = _.findIndex(user.posts, function(o) { return o.postID == userPostID; });
+                                const commentIndex = _.findIndex(user.posts[postIndex].comments, function(o) { return o.commentID == userReplyID && o.new_comment == true });
+                                user.posts[postIndex].comments[commentIndex].likes = final_notify[notifyIndex].numLikes;
+                            } else {
+                                const postIndex = _.findIndex(user.feedAction, function(o) { return o.post.equals(userPostID); });
+                                const commentIndex = _.findIndex(user.feedAction[postIndex].comments, function(o) { return o.new_comment_id == userReplyID && o.new_comment == true });
+                                user.feedAction[postIndex].comments[commentIndex].likes = final_notify[notifyIndex].numLikes;
+                            }
+                        }
+                    }
+                }
+            }
+
+            final_notify.sort(function(a, b) {
+                return b.time - a.time;
+            });
+
+            const userPosts = user.getPosts().slice(0) || [];
+
+            const repliesOnActorPosts = user.feedAction
+                .filter(post => (post.comments.filter(comment => comment.new_comment == true).length) > 0)
+                .map(post => post.post); // IDs of actor posts user has commented on.       
+            const posts = await Script.find({
+                    _id: { "$in": repliesOnActorPosts }
+                })
+                .populate('actor')
+                .populate('comments.actor')
+                .exec();
+            const finalfeed = helpers.getFeed(userPosts, posts, user, 'NOTIFICATION');
+            //Log our visit to Notifications
+            if (!req.query.bell) {
+                user.lastNotifyVisit = currDate;
+            }
+            await user.save();
+
+            const newNotificationCount = final_notify.filter(notification => notification.unreadNotification == true).length;
+            if (req.query.bell) {
+                return res.send({ count: newNotificationCount });
+            } else {
+                return res.render('notification', {
+                    notification_feed: final_notify,
+                    script: finalfeed,
+                    count: newNotificationCount
+                })
+            }
+        };
+    } catch (err) {
+        console.log(err);
+        next(err);
+    }
+}
+
+=== controllers/user.js ===
+const passport = require('passport');
+const validator = require('validator');
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' }); // See the file .env.example for the structure of .env
+const User = require('../models/User');
+
+/**
+ * GET /login
+ * Render the login page.
+ */
+exports.getLogin = (req, res) => {
+    if (req.user) {
+        return res.redirect('/');
+    }
+    res.render('account/login', {
+        title: 'Login',
+        site_picture: process.env.SITE_PICTURE
+    });
+};
+
+/**
+ * POST /login
+ * Handles user sign in using email and password.
+ */
+exports.postLogin = (req, res, next) => {
+    const validationErrors = [];
+    if (!validator.isEmail(req.body.email)) validationErrors.push({ msg: 'Please enter a valid email address.' });
+    if (validator.isEmpty(req.body.password)) validationErrors.push({ msg: 'Password cannot be blank.' });
+
+    if (validationErrors.length) {
+        req.flash('errors', validationErrors);
+        return res.redirect('/login');
+    }
+    req.body.email = validator.normalizeEmail(req.body.email, { gmail_remove_dots: false });
+    passport.authenticate('local', (err, user, info) => {
+        const study_length = 86400000 * process.env.NUM_DAYS; // Milliseconds in NUM_DAYS days
+        const time_diff = Date.now() - user.createdAt; // Time difference between now and account creation.
+        if (err) { return next(err); }
+        if (!user) {
+            req.flash('errors', info);
+            return res.redirect('/login');
+        }
+        if (!(user.active) || ((time_diff >= study_length) && !user.isAdmin)) {
+            const endSurveyLink = user.endSurveyLink;
+            req.flash('final', { msg: endSurveyLink });
+            return res.redirect('/login');
+        }
+        req.logIn(user, (err) => {
+            if (err) { return next(err); }
+            const time_now = Date.now();
+            const userAgent = req.headers['user-agent'];
+            const user_ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+            user.logUser(time_now, userAgent, user_ip);
+            if (user.consent) {
+                res.redirect(req.session.returnTo || '/');
+            } else {
+                res.redirect('/account/signup_info');
+            }
+        });
+    })(req, res, next);
+};
+
+/**
+ * GET /logout
+ * Handles user log out.
+ */
+exports.logout = (req, res) => {
+    req.logout((err) => {
+        if (err) console.log('Error : Failed to logout.', err);
+        req.session.destroy((err) => {
+            if (err) console.log('Error : Failed to destroy the session during logout.', err);
+            req.user = null;
+            res.redirect('/');
+        });
+    });
+};
+
+/**
+ * GET /signup
+ * Render the signup page.
+ */
+exports.getSignup = (req, res) => {
+    if (req.user) {
+        return res.redirect('/');
+    }
+    res.render('account/signup', {
+        title: 'Create Account'
+    });
+};
+
+/**
+ * POST /signup
+ * Handles user sign up and creation of a new account.
+ */
+exports.postSignup = async(req, res, next) => {
+    const validationErrors = [];
+    if (!validator.isEmail(req.body.email)) validationErrors.push({ msg: 'Please enter a valid email address.' });
+    if (!validator.isLength(req.body.password, { min: 4 })) validationErrors.push({ msg: 'Password must be at least 4 characters long.' });
+    if (validator.escape(req.body.password) !== validator.escape(req.body.confirmPassword)) validationErrors.push({ msg: 'Passwords do not match.' });
+    if (validationErrors.length) {
+        req.flash('errors', validationErrors);
+        return res.redirect('/signup');
+    }
+    req.body.email = validator.normalizeEmail(req.body.email, { gmail_remove_dots: false });
+
+    try {
+        const existingUser = await User.findOne({ $or: [{ email: req.body.email }, { mturkID: req.body.mturkID }] }).exec();
+        if (existingUser) {
+            req.flash('errors', { msg: 'An account with that email address or MTurkID already exists.' });
+            return res.redirect('/signup');
+        }
+        /*###############################
+        Place Experimental Varibles Here!
+        ###############################*/
+        const numConditions = process.env.NUM_EXP_CONDITIONS;
+        const experimentalConditionNames = process.env.EXP_CONDITIONS_NAMES.split(",");
+        const experimentalCondition = experimentalConditionNames[Math.floor(Math.random() * numConditions)];
+
+        const surveyLink = process.env.POST_SURVEY ? process.env.POST_SURVEY + req.body.mturkID : "";
+        const currDate = Date.now();
+        const user = new User({
+            email: req.body.email,
+            password: req.body.password,
+            mturkID: req.body.mturkID,
+            username: req.body.username,
+            experimentalCondition: experimentalCondition,
+            endSurveyLink: surveyLink,
+            active: true,
+            lastNotifyVisit: currDate,
+            createdAt: currDate
+        });
+        await user.save();
+        req.logIn(user, (err) => {
+            if (err) {
+                return next(err);
+            }
+            const userAgent = req.headers['user-agent'];
+            const user_ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+            user.logUser(currDate, userAgent, user_ip);
+            res.redirect('/account/signup_info');
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /account/profile
+ * Update user's profile information during the sign up process.
+ */
+exports.postSignupInfo = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        user.profile.name = req.body.name.trim() || '';
+        user.profile.location = req.body.location.trim() || '';
+        user.profile.bio = req.body.bio.trim() || '';
+        if (req.file) {
+            user.profile.picture = req.file.filename;
+        }
+
+        await user.save();
+        req.flash('success', { msg: 'Profile information has been updated.' });
+        return res.redirect('/com');
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /account/consent
+ * Update user's consent.
+ */
+exports.postConsent = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        user.consent = true;
+        await user.save();
+        res.set('Content-Type', 'application/json; charset=UTF-8');
+        res.send({ result: "success" });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * GET /account
+ * Render user's Update My Profile page.
+ */
+exports.getAccount = (req, res) => {
+    res.render('account/profile', {
+        title: 'Account Management'
+    });
+};
+
+/**
+ * GET /me
+ * Render user's profile page.
+ */
+exports.getMe = async(req, res) => {
+    try {
+        const user = await User.findById(req.user.id).populate('posts.comments.actor').exec();
+        const allPosts = user.getPosts();
+        res.render('me', { posts: allPosts, title: user.profile.name || user.email || user.id });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /account/profile
+ * Update user's profile information.
+ */
+exports.postUpdateProfile = async(req, res, next) => {
+    const validationErrors = [];
+    if (!validator.isEmail(req.body.email)) validationErrors.push({ msg: 'Please enter a valid email address.' });
+    if (validationErrors.length) {
+        req.flash('errors', validationErrors);
+        return res.redirect('/account');
+    }
+    req.body.email = validator.normalizeEmail(req.body.email, { gmail_remove_dots: false });
+    try {
+        const user = await User.findById(req.user.id).exec();
+        user.email = req.body.email || '';
+        user.profile.name = req.body.name.trim() || '';
+        user.profile.location = req.body.location.trim() || '';
+        user.profile.bio = req.body.bio.trim() || '';
+        if (req.file) {
+            user.profile.picture = req.file.filename;
+        }
+
+        await user.save();
+        req.flash('success', { msg: 'Profile information has been updated.' });
+        res.redirect('/account');
+    } catch (err) {
+        if (err.code === 11000) {
+            req.flash('errors', { msg: 'The email address you have entered is already associated with an account.' });
+            return res.redirect('/account');
+        }
+        next(err);
+    }
+};
+
+/**
+ * POST /account/password
+ * Update user's current password.
+ */
+exports.postUpdatePassword = async(req, res, next) => {
+    const validationErrors = [];
+    if (!validator.isLength(req.body.password, { min: 4 })) validationErrors.push({ msg: 'Password must be at least 4 characters long.' });
+    if (validator.escape(req.body.password) !== validator.escape(req.body.confirmPassword)) validationErrors.push({ msg: 'Passwords do not match.' });
+
+    if (validationErrors.length) {
+        req.flash('errors', validationErrors);
+        return res.redirect('/account');
+    }
+    try {
+        const user = await User.findById(req.user.id).exec();
+        user.password = req.body.password;
+        await user.save();
+        req.flash('success', { msg: 'Password has been changed.' });
+        res.redirect('/account');
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /pageLog
+ * Record user's page visit to pageLog.
+ */
+exports.postPageLog = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        user.logPage(Date.now(), req.body.path);
+        res.set('Content-Type', 'application/json; charset=UTF-8');
+        res.send({ result: "success" });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /pageTimes
+ * Record user's time on site to pageTimes.
+ */
+exports.postPageTime = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        // What day in the study is the user in? 
+        const one_day = 86400000; // number of milliseconds in a day
+        const time_diff = Date.now() - user.createdAt; // Time difference between now and account creation.
+        const current_day = Math.floor(time_diff / one_day);
+        user.pageTimes[current_day] += parseInt(req.body.time);
+        await user.save();
+        res.set('Content-Type', 'application/json; charset=UTF-8');
+        res.send({ result: "success" });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * GET /forgot
+ * Render Forgot Password page.
+ */
+exports.getForgot = (req, res) => {
+    if (req.isAuthenticated()) {
+        return res.redirect('/');
+    }
+    res.render('account/forgot', {
+        title: 'Forgot Password',
+        email: process.env.RESEARCHER_EMAIL
+    });
+};
+
+/**
+ * Deactivate accounts who are completed with the study, except for admin accounts. Called 3 times a day. Scheduled via CRON jobs in app.js
+ */
+exports.stillActive = async() => {
+    try {
+        const activeUsers = await User.find().where('active').equals(true).exec();
+        for (const user of activeUsers) {
+            const study_length = 86400000 * process.env.NUM_DAYS; // Milliseconds in NUM_DAYS days
+            const time_diff = Date.now() - user.createdAt; // Time difference between now and account creation.
+            if ((time_diff >= study_length) && !user.isAdmin) {
+                user.active = false;
+                user.logPostStats();
+                await user.save();
+            }
+        }
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * GET /completed
+ * Render Admin Dashboard: Basic information on users currrently in the study
+ */
+exports.userTestResults = async(req, res) => {
+    if (!req.user.isAdmin) {
+        res.redirect('/');
+    } else {
+        try {
+            const users = await User.find().where('isAdmin').equals(false).exec();
+            for (const user of users) {
+                const study_length = 86400000 * process.env.NUM_DAYS; // Milliseconds in NUM_DAYS days
+                const time_diff = Date.now() - user.createdAt; // Time difference between now and account creation.
+                if ((time_diff >= study_length) && !user.isAdmin) {
+                    user.active = false;
+                    user.logPostStats();
+                    await user.save();
+                }
+            }
+            res.render('completed', { users: users });
+        } catch (err) {
+            next(err);
+        }
+    }
+};
+
+=== controllers/script.js ===
+const Script = require('../models/Script.js');
+const User = require('../models/User');
+const Notification = require('../models/Notification');
+const helpers = require('./helpers');
+const _ = require('lodash');
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' }); // See the file .env.example for the structure of .env
+
+/**
+ * GET /
+ * Fetch and render newsfeed.
+ */
+exports.getScript = async(req, res, next) => {
+    try {
+        const one_day = 86400000; // Number of milliseconds in a day.
+        const time_now = Date.now(); // Current date.
+        const time_diff = time_now - req.user.createdAt; // Time difference between now and user account creation, in milliseconds.
+        const time_limit = time_diff - one_day; // Date in milliseconds 24 hours ago from now. This is used later to show posts only in the past 24 hours.
+
+        const user = await User.findById(req.user.id)
+            .populate('posts.comments.actor')
+            .exec();
+
+        // If the user is no longer active, sign the user out.
+        if (!user.active) {
+            req.logout((err) => {
+                if (err) console.log('Error : Failed to logout.', err);
+                req.session.destroy((err) => {
+                    if (err) console.log('Error : Failed to destroy the session during logout.', err);
+                    req.user = null;
+                    req.flash('errors', { msg: 'Account is no longer active. Study is over.' });
+                    res.redirect('/login');
+                });
+            });
+        }
+
+        // What day in the study is the user in? 
+        // Update study_days, which tracks the number of time user views feed.
+        const current_day = Math.floor(time_diff / one_day);
+        if (current_day < process.env.NUM_DAYS) {
+            user.study_days[current_day] += 1;
+        }
+
+        // Array of actor posts that match the user's experimental condition, within the past 24 hours, sorted by descending time. 
+        let script_feed = await Script.find({
+                class: { "$in": ["", user.experimentalCondition] }
+            })
+            .where('time').lte(time_diff).gte(time_limit)
+            .sort('-time')
+            .populate('actor')
+            .populate('comments.actor')
+            .exec();
+
+        // Array of any user-made posts within the past 24 hours, sorted by time they were created.
+        let user_posts = user.getPostInPeriod(time_limit, time_diff);
+        user_posts.sort(function(a, b) {
+            return b.relativeTime - a.relativeTime;
+        });
+
+        // Get the newsfeed and render it.
+        const finalfeed = helpers.getFeed(user_posts, script_feed, user, process.env.FEED_ORDER, true);
+        console.log("Script Size is now: " + finalfeed.length);
+        await user.save();
+        res.render('script', { script: finalfeed, showNewPostIcon: true });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/*
+ * Post /post/new
+ * Record a new user-made post. Include any actor replies (comments) that go along with it.
+ */
+exports.newPost = async(req, res) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        if (req.file) {
+            user.numPosts = user.numPosts + 1; // Count begins at 0
+            const currDate = Date.now();
+
+            let post = {
+                type: "user_post",
+                postID: user.numPosts,
+                body: req.body.body,
+                picture: req.file.filename,
+                liked: false,
+                likes: 0,
+                comments: [],
+                absTime: currDate,
+                relativeTime: currDate - user.createdAt,
+            };
+
+            // Find any Actor replies (comments) that go along with this post
+            const actor_replies = await Notification.find()
+                .where('userPostID').equals(post.postID)
+                .where('notificationType').equals('reply')
+                .populate('actor').exec();
+
+            // If there are Actor replies (comments) that go along with this post, add them to the user's post.
+            if (actor_replies.length > 0) {
+                for (const reply of actor_replies) {
+                    user.numActorReplies = user.numActorReplies + 1; // Count begins at 0
+                    const tmp_actor_reply = {
+                        actor: reply.actor._id,
+                        body: reply.replyBody,
+                        commentID: user.numActorReplies,
+                        relativeTime: post.relativeTime + reply.time,
+                        absTime: new Date(user.createdAt.getTime() + post.relativeTime + reply.time),
+                        new_comment: false,
+                        liked: false,
+                        flagged: false,
+                        likes: 0
+                    };
+                    post.comments.push(tmp_actor_reply);
+                }
+            }
+            user.posts.unshift(post); // Add most recent user-made post to the beginning of the array
+            await user.save();
+            res.redirect('/');
+        } else {
+            req.flash('errors', { msg: 'ERROR: Your post did not get sent. Please include a photo and a caption.' });
+            res.redirect('/');
+        }
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /feed/
+ * Record user's actions on ACTOR posts. 
+ */
+exports.postUpdateFeedAction = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        // Check if user has interacted with the post before.
+        let feedIndex = _.findIndex(user.feedAction, function(o) { return o.post == req.body.postID; });
+
+        // If the user has not interacted with the post before, add the post to user.feedAction.
+        if (feedIndex == -1) {
+            const cat = {
+                post: req.body.postID,
+                postClass: req.body.postClass,
+            };
+            feedIndex = user.feedAction.push(cat) - 1;
+        }
+
+        // User created a new comment on the post.
+        if (req.body.new_comment) {
+            user.numComments = user.numComments + 1;
+            const cat = {
+                new_comment: true,
+                new_comment_id: user.numComments,
+                body: req.body.comment_text,
+                relativeTime: req.body.new_comment - user.createdAt,
+                absTime: req.body.new_comment,
+                liked: false,
+                flagged: false,
+            }
+            user.feedAction[feedIndex].comments.push(cat);
+        }
+        // User interacted with a comment on the post.
+        else if (req.body.commentID) {
+            const isUserComment = (req.body.isUserComment == 'true');
+            // Check if user has interacted with the comment before.
+            let commentIndex = (isUserComment) ?
+                _.findIndex(user.feedAction[feedIndex].comments, function(o) {
+                    return o.new_comment_id == req.body.commentID && o.new_comment == isUserComment
+                }) :
+                _.findIndex(user.feedAction[feedIndex].comments, function(o) {
+                    return o.comment == req.body.commentID && o.new_comment == isUserComment
+                });
+
+            // If the user has not interacted with the comment before, add the comment to user.feedAction[feedIndex].comments
+            if (commentIndex == -1) {
+                const cat = {
+                    comment: req.body.commentID
+                };
+                user.feedAction[feedIndex].comments.push(cat);
+                commentIndex = user.feedAction[feedIndex].comments.length - 1;
+            }
+
+            // User liked the comment.
+            if (req.body.like) {
+                const like = req.body.like;
+                user.feedAction[feedIndex].comments[commentIndex].likeTime.push(like);
+                user.feedAction[feedIndex].comments[commentIndex].liked = true;
+                if (req.body.isUserComment != 'true') user.numCommentLikes++;
+            }
+
+            // User unliked the comment.
+            if (req.body.unlike) {
+                const unlike = req.body.unlike;
+                user.feedAction[feedIndex].comments[commentIndex].unlikeTime.push(unlike);
+                user.feedAction[feedIndex].comments[commentIndex].liked = false;
+                if (req.body.isUserComment != 'true') user.numCommentLikes--;
+            }
+
+            // User flagged the comment.
+            else if (req.body.flag) {
+                const flag = req.body.flag;
+                user.feedAction[feedIndex].comments[commentIndex].flagTime.push(flag);
+                user.feedAction[feedIndex].comments[commentIndex].flagged = true;
+            }
+        }
+        // User interacted with the post.
+        else {
+            // User flagged the post.
+            if (req.body.flag) {
+                const flag = req.body.flag;
+                user.feedAction[feedIndex].flagTime = [flag];
+                user.feedAction[feedIndex].flagged = true;
+            }
+
+            // User liked the post.
+            else if (req.body.like) {
+                const like = req.body.like;
+                user.feedAction[feedIndex].likeTime.push(like);
+                user.feedAction[feedIndex].liked = true;
+                user.numPostLikes++;
+            }
+            // User unliked the post.
+            else if (req.body.unlike) {
+                const unlike = req.body.unlike;
+                user.feedAction[feedIndex].unlikeTime.push(unlike);
+                user.feedAction[feedIndex].liked = false;
+                user.numPostLikes--;
+            }
+            // User read the post.
+            else if (req.body.viewed) {
+                const view = req.body.viewed;
+                user.feedAction[feedIndex].readTime.push(view);
+                user.feedAction[feedIndex].rereadTimes++;
+                user.feedAction[feedIndex].mostRecentTime = Date.now();
+            } else {
+                console.log('Something in feedAction went crazy. You should never see this.');
+            }
+        }
+        await user.save();
+        res.send({ result: "success", numComments: user.numComments });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /userPost_feed/
+ * Record user's actions on USER posts. 
+ */
+exports.postUpdateUserPostFeedAction = async(req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).exec();
+        // Find the index of object in user.posts
+        let feedIndex = _.findIndex(user.posts, function(o) { return o.postID == req.body.postID; });
+
+        if (feedIndex == -1) {
+            // Should not happen.
+        }
+        // User created a new comment on the post.
+        else if (req.body.new_comment) {
+            user.numComments = user.numComments + 1;
+            const cat = {
+                body: req.body.comment_text,
+                commentID: user.numComments,
+                relativeTime: req.body.new_comment - user.createdAt,
+                absTime: req.body.new_comment,
+                new_comment: true,
+                liked: false,
+                flagged: false,
+                likes: 0
+            };
+            user.posts[feedIndex].comments.push(cat);
+        }
+        // User interacted with a comment on the post.
+        else if (req.body.commentID) {
+            const commentIndex = _.findIndex(user.posts[feedIndex].comments, function(o) {
+                return o.commentID == req.body.commentID && o.new_comment == (req.body.isUserComment == 'true');
+            });
+            if (commentIndex == -1) {
+                console.log("Should not happen.");
+            }
+            // User liked the comment.
+            else if (req.body.like) {
+                user.posts[feedIndex].comments[commentIndex].liked = true;
+            }
+            // User unliked the comment. 
+            else if (req.body.unlike) {
+                user.posts[feedIndex].comments[commentIndex].liked = false;
+            }
+            // User flagged the comment.
+            else if (req.body.flag) {
+                user.posts[feedIndex].comments[commentIndex].flagged = true;
+            }
+        }
+        // User interacted with the post. 
+        else {
+            // User liked the post.
+            if (req.body.like) {
+                user.posts[feedIndex].liked = true;
+            }
+            // User unliked the post.
+            if (req.body.unlike) {
+                user.posts[feedIndex].liked = false;
+            }
+        }
+        await user.save();
+        res.send({ result: "success", numComments: user.numComments });
+    } catch (err) {
+        next(err);
+    }
+}
+
+=== controllers/actors.js ===
+const Actor = require('../models/Actor.js');
+const Script = require('../models/Script.js');
+const User = require('../models/User');
+const helpers = require('./helpers');
+
+/**
+ * GET /actors
+ * If the current user is an admin, retrieve all the actors from the database and render them to the page '../views/actors'.
+ * If the current user is not an admin, redirect the user to the home page. 
+ */
+exports.getActors = async(req, res) => {
+    if (!req.user.isAdmin) {
+        res.redirect('/');
+    } else {
+        try {
+            const actors = await Actor.find().exec();
+            res.render('actors', { actors: actors });
+        } catch (err) {
+            next(err);
+        }
+    }
+};
+
+/**
+ * GET /user/:userId
+ * Retrieve the profile and relevant experimental posts of the actor whose username field value matches the query parameter value 'userId'. 
+ * Process the posts with the helper function .getFeed() in ./helpers.js.
+ * Check if the current user has blocked or reported the actor.
+ * Render the actor's profile page along with the relevant data.
+ */
+exports.getActor = async(req, res, next) => {
+    const time_diff = Date.now() - req.user.createdAt;
+    try {
+        const user = await User.findById(req.user.id).exec();
+        const actor = await Actor.findOne({ username: req.params.userId }).exec();
+        if (actor == null) {
+            const myerr = new Error('Actor object not found!');
+            return next(myerr);
+        }
+        const isBlocked = user.blocked.includes(req.params.userId);
+        const isReported = user.reported.includes(req.params.userId);
+        const script_feed = await Script.find({ actor: actor.id, class: { "$in": ["", user.experimentalCondition] } })
+            .where('time').lte(time_diff)
+            .sort('-time')
+            .populate('actor')
+            .populate('comments.actor')
+            .exec();
+
+        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', true, false);
+        await user.save();
+        res.render('actor', { script: finalfeed, actor: actor, isBlocked: isBlocked, isReported: isReported, title: actor.profile.name });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /user
+ * Handle post requests to block, unblock, report, follow, and unfollow an actor.
+ */
+exports.postBlockReportOrFollow = async(req, res, next) => {
+    const currDate = Date.now();
+    try {
+        const user = await User.findById(req.user.id).exec();
+        // Block an actor
+        if (req.body.blocked) {
+            if (!(user.blocked.includes(req.body.blocked))) {
+                user.blocked.push(req.body.blocked)
+            };
+            const log = {
+                time: currDate,
+                action: "block",
+                actorName: req.body.blocked,
+            };
+            user.blockReportAndFollowLog.push(log);
+        }
+        // Unblock a user
+        else if (req.body.unblocked) {
+            if (user.blocked.includes(req.body.unblocked)) {
+                const index = user.blocked.indexOf(req.body.unblocked);
+                user.blocked.splice(index, 1);
+            }
+            const log = {
+                time: currDate,
+                action: "unblock",
+                actorName: req.body.unblocked,
+            };
+            user.blockReportAndFollowLog.push(log);
+        }
+        // Report an actor
+        else if (req.body.reported) {
+            if (!(user.reported.includes(req.body.reported))) {
+                user.reported.push(req.body.reported);
+            }
+            const log = {
+                time: currDate,
+                action: "report",
+                actorName: req.body.reported,
+                report_issue: req.body.report_issue
+            };
+            user.blockReportAndFollowLog.push(log);
+        }
+        // Follow an actor
+        else if (req.body.followed) {
+            if (!(user.followed.includes(req.body.followed))) {
+                user.followed.push(req.body.followed)
+            };
+            const log = {
+                time: currDate,
+                action: "follow",
+                actorName: req.body.followed,
+            };
+            user.blockReportAndFollowLog.push(log);
+        } // Unfollow an actor
+        else if (req.body.unfollowed) {
+            if (user.followed.includes(req.body.unfollowed)) {
+                const index = user.followed.indexOf(req.body.unfollowed);
+                user.followed.splice(index, 1);
+            }
+            const log = {
+                time: currDate,
+                action: "unfollow",
+                actorName: req.body.unfollowed,
+            };
+            user.blockReportAndFollowLog.push(log);
+        }
+        await user.save();
+        res.send({ result: "success" });
+    } catch (err) {
+        next(err);
+    }
+}
+
+=== controllers/helpers.js ===
+const _ = require('lodash');
+
+// From https://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
+// Function shuffles the content of an array and returns the shuffled array.
+function shuffle(array) {
+    let currentIndex = array.length,
+        randomIndex;
+    // While there remain elements to shuffle.
+    while (currentIndex != 0) {
+        // Pick a remaining element.
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex--;
+        // And swap it with the current element.
+        [array[currentIndex], array[randomIndex]] = [
+            array[randomIndex], array[currentIndex]
+        ];
+    }
+    return array;
+}
+
+/**
+ * This is a helper function, called in .getNotifications() (./notifications.js controller file), .getScript() (./script.js controller file), .getActor() (./actors.js controller file).
+ * It takes in a list of user posts, a list of actor posts, a User document, and other parameters, and it processes and generates a final feed of posts for the user based on these parameters.
+ * Parameters: 
+ *  - user_posts: list of user posts, typically from user.posts
+ *  - script_feed: list of script (actor) posts, typically from a call to the database: Script.find(...)
+ *  - user: a User document
+ *  - order: 'SHUFFLE', 'CHRONOLOGICAL'; indicates the order the posts in the final feed should be displayed in.
+ *  - removedFlaggedContent (boolean): T/F; indicates if a flagged post should be removed from the final feed.
+ *  - removedBlockedUserContent (boolean): T/F; indicates if posts from a blocked user should be removed from the final feed.
+ * Returns: 
+ *  - finalfeed: the processed final feed of posts for the user
+ */
+exports.getFeed = function(user_posts, script_feed, user, order, removeFlaggedContent, removedBlockedUserContent) {
+    // Array of posts for the final feed
+    let finalfeed = [];
+    // Array of seen and unseen posts, used when order=='shuffle' so that unseen posts appear before seen posts on the final feed.
+    let finalfeed_seen = [];
+    let finalfeed_unseen = [];
+    // Array of recent user posts, made within the last 10 minutes, used to append to the top of the final feed.
+    let new_user_posts = [];
+
+    // While there are actor posts or user posts to add to the final feed
+    while (script_feed.length || user_posts.length) {
+        // If there are no more script_feed posts or if user_post[0] post is more recent than script_feed[0] post, then add user_post[0] post to the finalfeed.
+        // Else, add script_feed[0] post to the finalfeed.
+        if (script_feed[0] === undefined ||
+            ((user_posts[0] !== undefined) && (script_feed[0].time < user_posts[0].relativeTime))) {
+            // Filter comments to include only past simulated comments, not future simulated comments. 
+            user_posts[0].comments = user_posts[0].comments.filter(comment => comment.absTime < Date.now());
+            // Sort comments from least to most recent.
+            user_posts[0].comments.sort(function(a, b) {
+                return a.relativeTime - b.relativeTime;
+            });
+            // If the user post was made within the last 10 minutes, it should be appended to the top of the final feed. So, push it to new_user_posts.
+            if ((Date.now() - user_posts[0].absTime) < 600000) {
+                new_user_posts.push(user_posts[0]);
+                user_posts.splice(0, 1);
+            } // Else, proceed normally.
+            else {
+                finalfeed.push(user_posts[0]);
+                user_posts.splice(0, 1);
+            }
+        } else {
+            // Filter comments to include only comments labeled with the experimental condition the user is in.
+            script_feed[0].comments = script_feed[0].comments.filter(comment => !comment.class || comment.class == user.experimentalCondition);
+
+            // Filter comments to include only past simulated comments, not future simulated comments.
+            script_feed[0].comments = script_feed[0].comments.filter(comment => user.createdAt.getTime() + comment.time < Date.now());
+
+            // Check if the user has interacted with this post by checking if a user.feedAction.post value matches this script_feed[0]'s _id. 
+            // If the user has interacted with this post, add the user's interactions to the post.
+            const feedIndex = _.findIndex(user.feedAction, function(o) { return o.post.equals(script_feed[0].id) });
+            if (feedIndex != -1) {
+                // Check if there are comment-type actions on this post.
+                if (Array.isArray(user.feedAction[feedIndex].comments) && user.feedAction[feedIndex].comments) {
+                    for (const commentObject of user.feedAction[feedIndex].comments) {
+                        // This is a user-made comment. Append it to the comments list for this post.
+                        if (commentObject.new_comment) {
+                            const cat = {
+                                commentID: commentObject.new_comment_id,
+                                body: commentObject.body,
+                                likes: commentObject.likes,
+                                time: commentObject.relativeTime,
+
+                                new_comment: commentObject.new_comment,
+                                liked: commentObject.liked
+                            };
+                            script_feed[0].comments.push(cat);
+                        } else {
+                            // This is not a user-made comment.
+                            // Get the index of the comment in the post.
+                            const commentIndex = _.findIndex(script_feed[0].comments, function(o) { return o.id == commentObject.comment; });
+                            if (commentIndex != -1) {
+                                // Check if this comment has been liked by the user. If true, update the comment in the post.
+                                if (commentObject.liked) {
+                                    script_feed[0].comments[commentIndex].liked = true;
+                                }
+                                // Check if this comment has been flagged by the user. If true, remove the comment from the post.
+                                if (commentObject.flagged) {
+                                    script_feed[0].comments.splice(commentIndex, 1);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Sort the comments in the post from least to most recent.
+                script_feed[0].comments.sort(function(a, b) {
+                    return a.time - b.time;
+                });
+
+                // No longer looking at comments on this post.
+                // Now we are looking at the main post.
+                // Check if this post has been liked by the user. If true, update the post.
+                if (user.feedAction[feedIndex].liked) {
+                    script_feed[0].like = true;
+                    script_feed[0].likes++;
+                }
+                // Check if this post has been flagged by the user: If true and removeFlaggedContent is true, remove the post.
+                if (user.feedAction[feedIndex].flagTime[0]) {
+                    if (removeFlaggedContent) {
+                        script_feed.splice(0, 1);
+                    } else {
+                        script_feed[0].flagged = true;
+                    }
+                } // Check if this post is by a blocked user: If true and removedBlockedUserContent is true, remove the post.
+                else if (user.blocked.includes(script_feed[0].actor.username & removedBlockedUserContent)) {
+                    script_feed.splice(0, 1);
+                } else {
+                    // If the post is neither flagged or from a blocked user, add it to the final feed.
+                    // If the final feed is shuffled, add posts to finalfeed_unseen and finalfeed_seen based on if the user has seen the post before or not.
+                    if (order == 'SHUFFLE') {
+                        // Check if there user has viewed the post before.
+                        if (!user.feedAction[feedIndex].readTime[0]) {
+                            finalfeed_unseen.push(script_feed[0]);
+                        } else {
+                            finalfeed_seen.push(script_feed[0]);
+                        }
+                    } else {
+                        finalfeed.push(script_feed[0]);
+                    }
+                    script_feed.splice(0, 1);
+                }
+            } // If the user has not interacted with this post:
+            else {
+                if (user.blocked.includes(script_feed[0].actor.username && removedBlockedUserContent)) {
+                    script_feed.splice(0, 1);
+                } else {
+                    if (order == 'SHUFFLE') {
+                        finalfeed_unseen.push(script_feed[0]);
+                    } else {
+                        finalfeed.push(script_feed[0]);
+                    }
+                    script_feed.splice(0, 1);
+                }
+            }
+        }
+    }
+    if (order == 'SHUFFLE') {
+        // Shuffle the feed
+        finalfeed_seen = shuffle(finalfeed_seen);
+        finalfeed_unseen = shuffle(finalfeed_unseen);
+        finalfeed = finalfeed_unseen.concat(finalfeed_seen);
+    }
+    // Concatenate the most recent user posts to the front of finalfeed.
+    finalfeed = new_user_posts.concat(finalfeed);
+    return finalfeed;
+};
+
+=== views/me.pug ===
+extends ui_layout
+
+block styles
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
+  
+block content
+  .computer.only.tablet.only.four.wide.column
+    include ./partials/userCard
+
+  #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;') 
+    if (posts.length==0)
+      .ui.fluid.card
+        .content
+          .description
+          |  No posts to show.
+    each val in posts
+      include ./partials/userPost
+  .computer.only.tablet.only.four.wide.column 
+
+block scripts
+  script().
+    let numComments = !{JSON.stringify(user.numComments)};
+  script(src='/public/js/postFunctionalities.js')
+
+=== views/info.pug ===
+extends ui_layout
+
+block content
+  .ui.text.container(style="margin-top: 2em; margin-bottom: 2em;")
+    h1(style="text-align: center;") Welcome to EatSnap.Love!
+    h3 Here's what you can do on the site.
+    ul
+        li Create new posts! Upload existing photos or take new photos with your phone.
+        li Reply to others' posts to get a conversation going.
+        li Like others' posts to show you love their snaps!
+        li Fill out your profile. You can add as much or as little info as you want.
+        li When the Notification Bell is red, that means you have new Notifications, be sure to check them out!
+    img.ui.centered.image(src='/public/esl-howto.png')
+    h3 See who else is around.
+    p We'll notify you if someone replies to or likes your post or comment.
+    .ui.big.green.labeled.icon.button.interest
+        i.rocket.icon
+        |   Continue
+
+    script.
+        $('.ui.big.green.labeled.icon.button.interest').on('click', function() {
+            $(this).addClass('loading disabled');
+            $.post("/account/consent", {
+                    _csrf: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(json) {
+                    if (json["result"] === "success") {
+                        window.location.href = '/'
+                    }
+                });
+        });
+
+=== views/ui_layout.pug ===
+doctype html
+html
+  head
+    meta(charset='utf-8')
+    meta(http-equiv='X-UA-Compatible', content='IE=edge')
+    meta(name='viewport', content='width=device-width, initial-scale=1.0')
+    meta(name='theme-color' content='#4DA5F4')
+    meta(name='csrf-token', content=_csrf)
+    meta(name="HandheldFriendly" content="True")
+    meta(name="apple-mobile-web-app-capable" content="yes")
+    meta(name="mobile-web-app-capable" content="yes")
+    meta(name="msapplication-tap-highlight" content="no")
+    meta(name="content-language" content="en_US")
+    title #{title} - #{process.env.SITE_NAME}
+    link(rel='shortcut icon', href=process.env.SITE_FAVICON)
+    link(rel='manifest', href='/public/manifest.json')
+    link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/fomantic-ui/2.9.2/semantic.min.css')
+    link(type='text/css', rel='stylesheet', href='/public/css/ui_layout.css')
+    block styles
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js')
+  script(src='https://d35ayucabfexcy.cloudfront.net/js/lib/humanized_time_span.js')
+  script(src='https://d35ayucabfexcy.cloudfront.net/js/lib/lazyload.transpiled.min.js')
+  script(src='https://cdnjs.cloudflare.com/ajax/libs/fomantic-ui/2.9.2/semantic.min.js')
+  script(src='/public/js/main.js')
+  block scripts
+
+  body
+    .ui.vertically.padded.grid.container#pagegrid
+      include partials/ui_header
+      .ui.grid.container#pagecontainer
+        include partials/ui_flash
+        block content
+
+=== views/actors.pug ===
+extends ui_layout
+
+block content
+  .ui.text.container(style="margin-top: 2em; margin-bottom: 2em")
+    h2(style="text-align: center;") All actors in simulation
+  .ui.five.stackable.cards
+    for actor in actors
+      .ui.card
+        .image
+          img(src='/public/picture.svg', data-src=cdn+'/profile_pictures/'+actor.profile.picture)
+        .content
+          a(href='/user/'+actor.username).header= actor.profile.name
+          .meta="@"+actor.username
+          .description(style='white-space: pre-wrap')=actor.profile.bio
+          .description(style="margin-top: 5px;")
+            if actor.profile.location
+              i.marker.icon
+              span=actor.profile.location
+
+=== views/com.pug ===
+extends ui_layout
+
+block content
+  .ui.text.container(style="margin-top: 2em; margin-bottom: 2em")
+    h2(style="text-align: center;") Community Rules for EatSnap.Love
+    p We are so glad you are here to eat, snap and love along with us! Before you get started, please review our community rules. These rules help foster a friendly and fun community. Please note that this is not a comprehensive list. Our moderators reserve the right to remove anything we deem inappropriate.
+
+    p Remember if you encounter anything in the following list, be sure to <b>Flag It 🚩</b> so our moderators can investigate and help out.
+
+    h3 No SPAM (unless it's in a can!)
+    p This is not the place to sell your services or promote your brand. SPAM will be deleted when found.
+
+    h3 No Personal Attacks and Bullying
+    p Zero tolerance on this! EatSnap.Love is a place to to share our snaps and our love, not to tear each other down. 
+
+    h3 No Racism, sexism, and other discrimination
+    p Attacking entire classes of people is just like attacking a single person: we'll ban you for it.
+
+    h3 No NSFW material
+    p If you wouldn't show your boss, don't show it here! 
+
+    if !user.consent
+      .ui.big.green.labeled.icon.button.info
+          i.rocket.icon
+          |   Got it!
+  
+  script.
+    $('.ui.big.green.labeled.icon.button.info').on('click', function() {
+        window.location.href = '/info';
+      });
+
+=== views/completed.pug ===
+extends ui_layout
+
+block content
+  .sixteen.wide.column 
+    table.ui.celled.padded.table
+      thead
+        tr
+          th.single.line E-mail
+          th MTurk ID
+          th Start Date (ET)
+          th Active?
+          th Approximate total time on site
+          th # of Posts
+          th # of Comments
+      each u in users
+        tbody
+          tr
+            td=u.email
+            td.single.line=u.mturkID
+            td=u.createdAt.toLocaleString("en-US", {timeZone: "America/New_York"})
+            td=u.active
+            td=Math.round(u.pageTimes.reduce((partialSum, a) => partialSum + a, 0)/1000/60)+" minutes"
+            td=u.numPosts + 1
+            td=u.numComments + 1
+
+=== views/actor.pug ===
+extends ui_layout
+
+block styles
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
+  
+block content
+  .computer.only.tablet.only.four.wide.column
+    .ui.card
+      .image
+        img(src='/public/picture.svg', data-src=cdn+'/profile_pictures/'+actor.profile.picture)
+      .content
+        a.header= actor.profile.name
+        .meta="@"+actor.username
+        .description(style='white-space: pre-wrap')=actor.profile.bio
+        .description(style="margin-top: 5px;")
+          if actor.profile.location
+            i.marker.icon
+            span=actor.profile.location
+        .ui.basic.primary.follow.button(style=" margin-top: 15px", actor_un = actor.username)
+          if user.followed.includes(actor.username)
+            i.check.icon 
+            | Following
+          else 
+            | Follow
+      .two.ui.bottom.attached.icon.buttons
+        button.ui.button.block(data-tooltip='Block User', data-position='bottom left', username=actor.username)
+          i.ban.icon
+        button.ui.button.report(data-tooltip='Report User', data-position='bottom right', username=actor.username)
+          i.flag.icon
+
+  #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;')
+    if (script.length==0)
+      .ui.fluid.card
+        .content
+          .description
+          |  No posts to show.
+    each val in script
+      include ./partials/actorPost
+      
+  .ui.small.report.coupled.modal
+    i.close.icon
+    .header 
+      i.flag.icon 
+      |  Report This User
+    .content
+      form#reportform.ui.reply.form(action='/user', method='POST')
+        input(type='hidden', name='_csrf', value=_csrf)
+        input(type='hidden', name='reported', value=actor.username)
+        .ui.form.large
+          .grouped.fields
+            label(for='report_issue') Help us understand the issue. What's the problem with this account?
+            .field
+              .ui.radio.checkbox
+                input.hidden(type='radio', name='report_issue', value="interested", tabindex='0')
+                label I'm not interested in this account.
+            .field
+              .ui.radio.checkbox
+                input.hidden(type='radio', name='report_issue', value="spam",tabindex='0')
+                label They are posting spam.
+            .field
+              .ui.radio.checkbox
+                input.hidden(type='radio', name='report_issue', value="bully", tabindex='0')
+                label They're being abusive or harmful.
+            .field
+              .ui.radio.checkbox
+                input.hidden(type='radio', name='report_issue', value="hacked", tabindex='0')
+                label Their account may be hacked.          
+    .actions
+      input.ui.green.button.disabled(type='submit', value='Submit', form='reportform')
+  .ui.small.second.coupled.modal
+    .header
+      | Your Report Has Been Sent!
+    .content
+      .description
+        p This user has been reported to the admins. Thank you for helping the community!
+    .actions
+      .ui.approve.green.button
+        i.checkmark.icon
+        | Continue
+  .ui.small.basic.blocked.modal
+    .ui.icon.header
+      i.ban.icon
+      | You Have Blocked This User
+    .content
+      p You will no longer receive posts from this user. You can choose to report this user or un-block them. 
+    .actions
+      .ui.left.floated.red.inverted.button
+        i.flag.icon
+        | Report User
+      .ui.home.inverted.button
+        i.home.icon
+        | Go Back to Homepage
+      .ui.green.ok.inverted.button
+        i.undo.icon
+        | Un-Block User
+  .computer.only.tablet.only.four.wide.column 
+                     
+block scripts
+  script().
+    let numComments = !{JSON.stringify(user.numComments)};
+    let isBlocked = !{JSON.stringify(isBlocked)};
+    let isReported = !{JSON.stringify(isReported)};
+  script(src='/public/js/actor.js')
+  script(src='/public/js/postFunctionalities.js')
+
+=== views/test.pug ===
+extends ui_layout
+
+block styles 
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
+
+block content
+  .computer.only.tablet.only.four.wide.column 
+    include ./partials/userCard
+  #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column.hidden
+    //- Input for creating new post at top of feed
+    #newpost.ui.fluid.left.labeled.right.icon.input
+      .ui.label
+        if user.profile.picture
+          img.ui.avatar.image(src='/user_avatar/'+user.profile.picture)
+        else
+          img.ui.avatar.image(src=user.gravatar(60))
+      input(type='text', placeholder='Create a post')
+      i.big.photo.link.icon
+    each val in script
+      if val.relativeTime 
+        //- This is a User made post
+        include partials/userPost
+      else 
+        //- This is an Actor post
+        include partials/actorPost
+    .ui.fluid.card
+      .content
+        .description
+        |  End of Posts for the last 24 hours.
+  .computer.only.tablet.only.four.wide.column
+    
+  .ui.tiny.post.modal
+    i.close.icon
+    .header Add a New Post
+    .scrolling.content
+      form#postform.ui.feed.form(action='/post/new', method='POST', enctype='multipart/form-data')
+        input(type='hidden', name='_csrf', value=_csrf)
+        .field
+          textarea(rows='2', placeholder='Share your meal', name='body')
+        .field.image-upload
+          label(for='picinput')
+            .image.content
+              img#imgInp.ui.fluid.image(src='/public/photo-camera.svg')
+          input#picinput(type='file', accept='image/*', name='picinput')
+    .actions
+      input.ui.green.button(type='submit', form='postform', value='Submit')
+          
+block scripts
+  script().
+    let numComments = !{JSON.stringify(user.numComments)};
+  script(src='/public/js/script.js')
+  script(src='/public/js/postFunctionalities.js')
+
+=== views/tos.pug ===
+extends ui_layout
+
+block content
+  .ui.text.container(style="margin-top: 2em; margin-bottom: 2em")
+    p These Terms of Service (“Terms”) govern your access to and use of our services, including our various websites, SMS, APIs, email notifications, applications, buttons, widgets, ads, commerce services, and our other covered services that link to these Terms (collectively, the “Services”), and any information, text, links, graphics, photos, videos, or other materials or arrangements of materials uploaded, downloaded or appearing on the Services (collectively referred to as “Content”). By using the Services you agree to be bound by these Terms.
+
+    h2 1. Who May Use the Services
+    p You may use the Services only if you agree to form a binding contract with EatSnap.Love and are not a person barred from receiving services under the laws of the applicable jurisdiction. In any case, you must be at least 13 years old to use the Services. If you are accepting these Terms and using the Services on behalf of a company, organization, government, or other legal entity, you represent and warrant that you are authorized to do so.
+
+    h2 2. Privacy
+    p Our Privacy Policy describes how we handle the information you provide to us when you use our Services. You understand that through your use of the Services you consent to the collection and use (as set forth in the Privacy Policy) of this information, including the transfer of this information to the United States, Ireland, and/or other countries for storage, processing and use by EatSnap.Love and its affiliates.
+
+    h2 3. Content on the Services
+    p You are responsible for your use of the Services and for any Content you provide, including compliance with applicable laws, rules, and regulations. You should only provide Content that you are comfortable sharing with others.
+    p Any use or reliance on any Content or materials posted via the Services or obtained by you through the Services is at your own risk. We do not endorse, support, represent or guarantee the completeness, truthfulness, accuracy, or reliability of any Content or communications posted via the Services or endorse any opinions expressed via the Services. You understand that by using the Services, you may be exposed to Content that might be offensive, harmful, inaccurate or otherwise inappropriate, or in some cases, postings that have been mislabeled or are otherwise deceptive. All Content is the sole responsibility of the person who originated such Content. We may not monitor or control the Content posted via the Services and, we cannot take responsibility for such Content.
+    p EatSnap.Love respects the intellectual property rights of others and expects users of the Services to do the same. We reserve the right to remove Content alleged to be infringing without prior notice, at our sole discretion, and without liability to you. We will respond to notices of alleged copyright infringement that comply with applicable law and are properly provided to us, as described in our Copyright policy. If you believe that your Content has been copied in a way that constitutes copyright infringement, please report this by visiting our Copyright reporting form or contacting our designated copyright agent.
+
+    h3 Your Rights
+    p You retain your rights to any Content you submit, post or display on or through the Services. What's yours is yours — you own your Content (and your photos and videos are part of the Content).
+    p By submitting, posting or displaying Content on or through the Services, you grant us a worldwide, non-exclusive, royalty-free license (with the right to sublicense) to use, copy, reproduce, process, adapt, modify, publish, transmit, display and distribute such Content in any and all media or distribution methods (now known or later developed). This license authorizes us to make your Content available to the rest of the world and to let others do the same. You agree that this license includes the right for EatSnap.Love to provide, promote, and improve the Services and to make Content submitted to or through the Services available to other companies, organizations or individuals for the syndication, broadcast, distribution, promotion or publication of such Content on other media and services, subject to our terms and conditions for such Content use. Such additional uses by EatSnap.Love, or other companies, organizations or individuals, may be made with no compensation paid to you with respect to the Content that you submit, post, transmit or otherwise make available through the Services.
+    p EatSnap.Love has an evolving set of rules for how ecosystem partners can interact with your Content on the Services. These rules exist to enable an open ecosystem with your rights in mind. You understand that we may modify or adapt your Content as it is distributed, syndicated, published, or broadcast by us and our partners and/or make changes to your Content in order to adapt the Content to different media. You represent and warrant that you have all the rights, power and authority necessary to grant the rights granted herein to any Content that you submit.
+
+    h2 4. Using the Services
+    p Please review the EatSnap.Love Rules, which are part of the User Agreement and outline what is prohibited on the Services. You may use the Services only in compliance with these Terms and all applicable laws, rules and regulations.
+    p Our Services evolve constantly. As such, the Services may change from time to time, at our discretion. We may stop (permanently or temporarily) providing the Services or any features within the Services to you or to users generally. We also retain the right to create limits on use and storage at our sole discretion at any time. We may also remove or refuse to distribute any Content on the Services, suspend or terminate users, and reclaim usernames without liability to you.
+    p In consideration for EatSnap.Love granting you access to and use of the Services, you agree that EatSnap.Love and its third-party providers and partners may place advertising on the Services or in connection with the display of Content or information from the Services whether submitted by you or others. You also agree not to misuse our Services, for example, by interfering with them or accessing them using a method other than the interface and the instructions that we provide. You may not do any of the following while accessing or using the Services: (i) access, tamper with, or use non-public areas of the Services, EatSnap.Love's computer systems, or the technical delivery systems of EatSnap.Love providers; (ii) probe, scan, or test the vulnerability of any system or network or breach or circumvent any security or authentication measures; (iii) access or search or attempt to access or search the Services by any means (automated or otherwise) other than through our currently available, published interfaces that are provided by EatSnap.Love (and only pursuant to the applicable terms and conditions), unless you have been specifically allowed to do so in a separate agreement with EatSnap.Love (NOTE: crawling the Services is permissible if done in accordance with the provisions of the robots.txt file, however, scraping the Services without the prior consent of EatSnap.Love is expressly prohibited); (iv) forge any TCP/IP packet header or any part of the header information in any email or posting, or in any way use the Services to send altered, deceptive or false source-identifying information; or (v) interfere with, or disrupt, (or attempt to do so), the access of any user, host or network, including, without limitation, sending a virus, overloading, flooding, spamming, mail-bombing the Services, or by scripting the creation of Content in such a manner as to interfere with or create an undue burden on the Services. We also reserve the right to access, read, preserve, and disclose any information as we reasonably believe is necessary to (i) satisfy any applicable law, regulation, legal process or governmental request, (ii) enforce the Terms, including investigation of potential violations hereof, (iii) detect, prevent, or otherwise address fraud, security or technical issues, (iv) respond to user support requests, or (v) protect the rights, property or safety of EatSnap.Love, its users and the public. EatSnap.Love does not disclose personally-identifying information to third parties except in accordance with our Privacy Policy.
+
+    h3 Your Account
+    p You may need to create an account to use some of our Services. You are responsible for safeguarding your account, so use a strong password and limit its use to this account. We cannot and will not be liable for any loss or damage arising from your failure to comply with the above.
+    p You can control most communications from the Services. We may need to provide you with certain communications, such as service announcements and administrative messages. These communications are considered part of the Services and your account, and you may not be able to opt-out from receiving them. If you added your phone number to your account and you later change or deactivate that phone number, you must update your account information to help prevent us from communicating with anyone who acquires your old number.
+    
+    h3 Your License to Use the Services
+    p EatSnap.Love gives you a personal, worldwide, royalty-free, non-assignable and non-exclusive license to use the software provided to you as part of the Services. This license has the sole purpose of enabling you to use and enjoy the benefit of the Services as provided by EatSnap.Love, in the manner permitted by these Terms.
+    p The Services are protected by copyright, trademark, and other laws of both the United States and foreign countries. Nothing in the Terms gives you a right to use the EatSnap.Love name or any of the EatSnap.Love trademarks, logos, domain names, and other distinctive brand features. All right, title, and interest in and to the Services (excluding Content provided by users) are and will remain the exclusive property of EatSnap.Love and its licensors. Any feedback, comments, or suggestions you may provide regarding EatSnap.Love, or the Services is entirely voluntary and we will be free to use such feedback, comments or suggestions as we see fit and without any obligation to you.
+
+    h3 Ending These Terms
+    p You may end your legal agreement with EatSnap.Love at any time by deactivating your accounts and discontinuing your use of the Services.
+    p We may suspend or terminate your account or cease providing you with all or part of the Services at any time for any or no reason, including, but not limited to, if we reasonably believe: (i) you have violated these Terms or the EatSnap.Love Rules, (ii) you create risk or possible legal exposure for us; (iii) your account should be removed due to prolonged inactivity; or (iv) our provision of the Services to you is no longer commercially viable. We will make reasonable efforts to notify you by the email address associated with your account or the next time you attempt to access your account, depending on the circumstances. In all such cases, the Terms shall terminate, including, without limitation, your license to use the Services, except that the following sections shall continue to apply: II, III, V, and VI.
+
+    h2 5. Disclaimers and Limitations of Liability
+    h3 The Services are Available “AS-IS”
+    p Your access to and use of the Services or any Content are at your own risk. You understand and agree that the Services are provided to you on an “AS IS” and “AS AVAILABLE” basis. The “EatSnap.Love Entities” refers to EatSnap.Love, its parents, affiliates, related companies, officers, directors, employees, agents, representatives, partners, and licensors. Without limiting the foregoing, to the maximum extent permitted under applicable law, THE EatSnap.Love ENTITIES DISCLAIM ALL WARRANTIES AND CONDITIONS, WHETHER EXPRESS OR IMPLIED, OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. The EatSnap.Love Entities make no warranty or representation and disclaim all responsibility and liability for: (i) the completeness, accuracy, availability, timeliness, security or reliability of the Services or any Content; (ii) any harm to your computer system, loss of data, or other harm that results from your access to or use of the Services or any Content; (iii) the deletion of, or the failure to store or to transmit, any Content and other communications maintained by the Services; and (iv) whether the Services will meet your requirements or be available on an uninterrupted, secure, or error-free basis. No advice or information, whether oral or written, obtained from the EatSnap.Love Entities or through the Services, will create any warranty or representation not expressly made herein.
+
+    h3 Limitation of Liability
+    p TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE EatSnap.Love ENTITIES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES, WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOOD-WILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM (i) YOUR ACCESS TO OR USE OF OR INABILITY TO ACCESS OR USE THE SERVICES; (ii) ANY CONDUCT OR CONTENT OF ANY THIRD PARTY ON THE SERVICES, INCLUDING WITHOUT LIMITATION, ANY DEFAMATORY, OFFENSIVE OR ILLEGAL CONDUCT OF OTHER USERS OR THIRD PARTIES; (iii) ANY CONTENT OBTAINED FROM THE SERVICES; OR (iv) UNAUTHORIZED ACCESS, USE OR ALTERATION OF YOUR TRANSMISSIONS OR CONTENT. IN NO EVENT SHALL THE AGGREGATE LIABILITY OF THE EatSnap.Love ENTITIES EXCEED THE GREATER OF ONE HUNDRED U.S. DOLLARS (U.S. $100.00) OR THE AMOUNT YOU PAID EatSnap.Love, IF ANY, IN THE PAST SIX MONTHS FOR THE SERVICES GIVING RISE TO THE CLAIM. THE LIMITATIONS OF THIS SUBSECTION SHALL APPLY TO ANY THEORY OF LIABILITY, WHETHER BASED ON WARRANTY, CONTRACT, STATUTE, TORT (INCLUDING NEGLIGENCE) OR OTHERWISE, AND WHETHER OR NOT THE EatSnap.Love ENTITIES HAVE BEEN INFORMED OF THE POSSIBILITY OF ANY SUCH DAMAGE, AND EVEN IF A REMEDY SET FORTH HEREIN IS FOUND TO HAVE FAILED OF ITS ESSENTIAL PURPOSE.
+
+    h2 6. General
+    p We may revise these Terms from time to time. The changes will not be retroactive, and the most current version of the Terms, which will always be at eatsnap.love.com/tos, will govern our relationship with you. We will try to notify you of material revisions, for example via a service notification or an email to the email associated with your account. By continuing to access or use the Services after those revisions become effective, you agree to be bound by the revised Terms.
+    p The laws of the State of California, excluding its choice of law provisions, will govern these Terms and any dispute that arises between you and EatSnap.Love. All disputes related to these Terms or the Services will be brought solely in the federal or state courts located in San Francisco County, California, United States, and you consent to personal jurisdiction and waive any objection as to inconvenient forum.
+    p If you are a federal, state, or local government entity in the United States using the Services in your official capacity and legally unable to accept the controlling law, jurisdiction or venue clauses above, then those clauses do not apply to you. For such U.S. federal government entities, these Terms and any action related thereto will be governed by the laws of the United States of America (without reference to conflict of laws) and, in the absence of federal law and to the extent permitted under federal law, the laws of the State of California (excluding choice of law).
+    p In the event that any provision of these Terms is held to be invalid or unenforceable, then that provision will be limited or eliminated to the minimum extent necessary, and the remaining provisions of these Terms will remain in full force and effect. EatSnap.Love's failure to enforce any right or provision of these Terms will not be deemed a waiver of such right or provision.
+
+=== views/error.pug ===
+extends ui_layout
+
+block content
+  .sixteen.wide.column(style="margin-top: 2em; margin-bottom: 2em;")
+    h1 Oops! !{error.status + " " + message}
+    p #{error.stack}
+
+=== views/script.pug ===
+extends ui_layout
+
+block styles 
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
+
+block content
+  .computer.only.tablet.only.four.wide.column 
+    include ./partials/userCard
+  #loading.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.eight.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column.hidden
+    //- Input for creating new post at top of feed
+    #newpost.ui.fluid.left.labeled.right.icon.input
+      .ui.label
+        if user.profile.picture
+          img.ui.avatar.image(src='/user_avatar/'+user.profile.picture)
+        else
+          img.ui.avatar.image(src=user.gravatar(60))
+      input(type='text', placeholder='Create a post')
+      i.big.photo.link.icon
+    each val in script
+      if val.relativeTime 
+        //- This is a User made post
+        include partials/userPost
+      else 
+        //- This is an Actor post
+        include partials/actorPost
+    .ui.fluid.card
+      .content
+        .description
+        |  End of Posts for the last 24 hours.
+  .computer.only.tablet.only.four.wide.column
+    
+  .ui.tiny.post.modal
+    i.close.icon
+    .header Add a New Post
+    .scrolling.content
+      form#postform.ui.feed.form(action='/post/new', method='POST', enctype='multipart/form-data')
+        input(type='hidden', name='_csrf', value=_csrf)
+        .field
+          textarea(rows='2', placeholder='Share your meal', name='body')
+        .field.image-upload
+          label(for='picinput')
+            .image.content
+              img#imgInp.ui.fluid.image(src='/public/photo-camera.svg')
+          input#picinput(type='file', accept='image/*', name='picinput')
+    .actions
+      input.ui.green.button(type='submit', form='postform', value='Submit')
+          
+block scripts
+  script().
+    let numComments = !{JSON.stringify(user.numComments)};
+  script(src='/public/js/script.js')
+  script(src='/public/js/postFunctionalities.js')
+
+=== views/notification.pug ===
+extends ui_layout
+
+block styles
+  link(type='text/css', rel='stylesheet', href='/public/css/notification.css')
+  link(type='text/css', rel='stylesheet', href='/public/css/script.css')
+
+block content
+  .computer.only.tablet.only.four.wide.column
+    include ./partials/userCard
+
+  #loading.ten.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column
+    img.ui.centered.small.image(src='/public/heart.svg')
+  #content.ten.wide.computer.ten.wide.tablet.sixteen.wide.mobile.column(style='display: none;')
+    if notification_feed.length==0
+      .ui.fluid.card
+        .content
+          .description
+          |  You have no notifications at this time.
+    else
+      h3 Notifications (!{count})
+      each notification in notification_feed
+        .ui.raised.segment(correspondingPost=notification.postID, class = !notification.unreadNotification ? "read": "")
+          .ui.feed
+            case notification.action
+              when 'read'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.unhide.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        if actor.username != "generic-joe"
+                          a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
+                            img.ui.avatar.image(src='/public/picture.svg', data-src='/profile_pictures/'+actor.profile.picture)
+                    if best.length == 1
+                      .summary
+                        a(href='/user/'+best[0].username)=best[0].profile.name
+                        |   has read your post. 
+                        .date=notification.time
+                    else 
+                      .summary
+                        a(href='/user/'+best[0].username)=best[0].profile.name
+                        |  and 
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have read your post.  
+                        .date=notification.time
+              when 'like'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.like.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='bottom center')                       
+                          img.ui.avatar.image(src='/public/picture.svg', data-src='/profile_pictures/'+actor.profile.picture)
+                    .summary
+                      a(href='/user/'+best[0].username)=best[0].profile.name
+                      if best.length != 1
+                        |  and 
+                        a.others(key=notification.key)=(best.length+notification.actors.length-1)+" others"
+                        |  have
+                      else 
+                        |  has
+                      |  liked your post. 
+                      .date=notification.time
+              when 'reply'
+                .event
+                  .label
+                    i.large.reply.icon
+                  .content
+                    img.ui.tiny.right.floated.rounded.image(src='/user_post/'+notification.picture)
+                    .extra.images
+                        a.ui.avatar.image(href='/user/'+notification.actor.username, data-tooltip=notification.actor.profile.name, data-position='bottom center')                       
+                          img.ui.avatar.image(src='/public/picture.svg', data-src='/profile_pictures/'+notification.actor.profile.picture)
+                    .summary
+                      a(href='/user/'+notification.actor.username)
+                        span=notification.actor.profile.name
+                      |  has commented on your post.
+                      .date=notification.time
+                    .extra.text=notification.replyBody
+              when 'reply_read'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.unhide.icon
+                  .content
+                    //- if notification.picture
+                      //- img.ui.tiny.right.floated.image(src='/public/picture.svg', data-src='/post_pictures/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        if actor.username != "generic-joe"
+                          a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')                            
+                            img.ui.avatar.image(src='/public/picture.svg', data-src='/profile_pictures/'+actor.profile.picture)
+                    .summary
+                      a(href='/user/'+best[0].username)=best[0].profile.name
+                      if best.length == 1
+                        |  has 
+                      else 
+                        |  and 
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have 
+                      | read your reply to #{notification.originalActor.profile.name}'s post:
+                      .date=notification.time
+                    .extra.text=notification.body
+              when 'reply_like'
+                - var best = notification.actors.splice(0, 5);
+                .event
+                  .label
+                    i.large.like.icon
+                  .content
+                    //- if notification.picture
+                      //- img.ui.tiny.right.floated.image(src='/public/picture.svg', data-src='/post_pictures/'+notification.picture)
+                    .extra.images
+                      each actor in best
+                        a.ui.avatar.image(href='/user/'+actor.username, data-tooltip=actor.profile.name, data-position='top center')
+                          img.ui.avatar.image(src='/public/picture.svg', data-src='/profile_pictures/'+actor.profile.picture)
+                    .summary
+                      a(href='/user/'+best[0].username)=best[0].profile.name
+                      if best.length == 1
+                        |  has 
+                      else 
+                        |  and 
+                        a(key=notification.key)=(best.length+notification.actors.length-1)+" others "
+                        | have 
+                      | liked your reply to #{notification.originalActor.profile.name}'s post:
+                      .date=notification.time
+                    .extra.text=notification.body                                                
+              
+    each val in script
+      if val.relativeTime 
+        //- This is a User made post
+        .ui.tiny.long.modal(correspondingPost=val.postID)
+          .ui.segment
+            include ./partials/userPost
+            .actions
+              .ui.positive.button Back
+      else 
+        //- This is an Actor post
+        .ui.tiny.long.modal(correspondingPost=val._id)
+          .ui.segment
+            include ./partials/actorPost
+            .actions
+              .ui.positive.button Back
+  .computer.only.tablet.only.two.wide.column 
+
+block scripts 
+  script.
+    let numComments = !{JSON.stringify(user.numComments)};
+  script(src='/public/js/notification.js')
+  script(src='/public/js/postFunctionalities.js')
+
+=== views/account/login.pug ===
+extends ../ui_layout
+
+block content
+  .computer.only.tablet.only.eight.wide.column
+    img.ui.fluid.image(src=process.env.SITE_PICTURE)
+
+  .eight.wide.computer.eight.wide.tablet.sixteen.wide.mobile.column
+    .ui.card.fluid(style="padding: 20px; margin-top: 90px;")
+      h2.ui.header Sign in
+      form.ui.form(action='/login', method='POST')
+        input(type='hidden', name='_csrf', value=_csrf)
+        .field
+          label(for='email') Email
+          input(type='email', name='email', id='email', placeholder='Email', autofocus, required)
+        .field
+          label(for='password') Password
+          input(type='password', name='password', id='password', placeholder='Password', required)
+        button.ui.large.button.blue(type='submit') Log In
+        a(href='/forgot') &nbsp;&nbsp;Forgot your password?
+      .ui.horizontal.divider
+        | Or
+      .center.aligned.column
+        .ui.big.green.labeled.icon.button.signup
+          i.signup.icon
+          |   Create Account
+
+  script.
+    $('.ui.big.green.labeled.icon.button.signup').on('click', function() {
+      window.location.href = '/signup';
+    });
+
+=== views/account/signup.pug ===
+extends ../ui_layout
+
+block content
+  .computer.only.tablet.only.eight.wide.column
+    img.ui.fluid.image(src=process.env.SITE_PICTURE)
+  .eight.wide.computer.eight.wide.tablet.sixteen.wide.mobile.column
+    .ui.card.fluid(style="padding: 20px; margin-top: 90px;")
+      h2.ui.header Sign Up
+      form.ui.form(id='signup-form', action='/signup', method='POST')
+        input(type='hidden', name='_csrf', value=_csrf)
+        .field
+          label(for='username') Username
+          input(type='text', name='username', id='username', placeholder='Username', autofocus, required)
+        .field
+          label(for='mturkID') !{process.env.IDENTIFIER}
+          input(type='text', name='mturkID', id='mturkID', placeholder=process.env.IDENTIFIER, required)
+        .field
+          label(for='email') Email (will not be publicly displayed)
+          input(type='email', name='email', id='email', placeholder='Email', required)
+        .field
+          label(for='password') Password
+          input(type='password', name='password', id='password', placeholder='Password', minlength="4", required)
+        .field
+          label(for='confirmPassword') Confirm Password 
+          input(type='password', name='confirmPassword', id='confirmPassword', placeholder='Confirm Password', minlength="4", required)
+          span(style="color: green; visibility:hidden; display: inline-block;")#passwordsMatch  
+            i.icon.check 
+            | Passwords Match
+        .field
+          .ui.checkbox
+            input(type='checkbox', name='tos', tabindex="0", id='tos', required)
+            label(for='tos')
+              | I agree to the 
+              a(href='/tos', target="_blank") Terms and Conditions.
+        button.ui.large.button(type='submit') Sign Up
+
+block scripts
+  script(src='/public/js/profile.js')
+
+=== views/account/signup_info.pug ===
+extends ../ui_layout
+
+block content
+  .twelve.wide.computer.tablet.sixteen.wide.mobile.column(style="margin-top: 2em; margin-bottom: 2em;")
+    h2(style="text-align: center;") Tell Us A Little More About Yourself
+
+    form.ui.large.form(action='/account/signup_info_post', method='POST', enctype='multipart/form-data')
+      input(type='hidden', name='_csrf', value=_csrf)
+      .field.image-upload
+        p(style="font-weight: bold; font-size: medium; margin-bottom: 0.2em") Profile Picture 
+          span(style="font-weight: normal") (Click to Change)
+        label(for='picinput', style="width: fit-content")
+          if user.profile.picture
+            img#imgInp.ui.small.image(src='/user_avatar/'+user.profile.picture)
+          else
+            img#imgInp.ui.small.image(src=user.gravatar(60))
+        input#picinput(type='file', accept='image/*', capture='camera', name='picinput')
+      .inline.fields(style='padding-top: 10px !important;')
+        .ten.wide.field
+          label(for='name') Name
+          input.form-control(type='text', name='name', id='name', value=user.profile.name)
+        .six.wide.field
+          label(for='location') Location
+          input.form-control(type='text', name='location', id='location', value=user.profile.location)
+      .field
+        label(for='bio') Bio
+        textarea(rows='2', name='bio', id='bio')=user.profile.bio
+      .ui.buttons
+        button.ui.large.positive.button(type='submit') Save
+        .or
+        button.ui.large.button.com(type='button') Skip
+  
+  script. 
+    //- Skip Button
+    $('button.ui.button.com').on('click', function() {
+        window.location.href = '/com';
+      });
+
+=== views/account/profile.pug ===
+extends ../ui_layout
+
+block content
+  .sixteen.wide.column(style="margin-top: 2em; margin-bottom: 2em;")
+    h2(style="text-align: center;") Profile Information
+
+    form.ui.large.form(action='/account/profile', method='POST', enctype='multipart/form-data', id='profile')
+      input(type='hidden', name='_csrf', value=_csrf)
+      .field
+        label(for='email') Email
+        input.form-control(type='email', name='email', id='email', value=user.email)
+      .field
+        label(for='name') Name
+        input.form-control(type='text', name='name', id='name', value=user.profile.name)
+      .field
+        label(for='location') Location
+        input.form-control(type='text', name='location', id='location', value=user.profile.location)
+      .field
+        label(for='bio') Bio
+        textarea(rows='2', name='bio', id='bio')=user.profile.bio
+      .field.image-upload
+        p(style="font-weight: bold; font-size: medium; margin-bottom: 0.2em") Profile Picture 
+          span(style="font-weight: normal") (Click to Change)
+        label(for='picinput', style="width: fit-content")
+          if user.profile.picture
+            img#imgInp.ui.small.image(src='/user_avatar/'+user.profile.picture)
+          else
+            img#imgInp.ui.small.image(src=user.gravatar(60))
+        input#picinput(type='file', accept='image/*', capture='camera', name='picinput')
+      button.ui.large.button.disabled(type='submit') Update Profile
+    .ui.divider
+    h3.ui.header(style="margin-top: 2em;") Change Password
+    form.ui.large.form(action='/account/password', method='POST', id='password')
+      input(type='hidden', name='_csrf', value=_csrf)
+      .field
+        label(for='password') New Password
+        input.form-control(type='password', name='password', id='password', placeholder=' New Password', minlength="4", required)
+      .field
+        label(for='confirmPassword') Confirm Password 
+        input.form-control(type='password', name='confirmPassword', id='confirmPassword', placeholder='Confirm Password', minlength="4", required)
+        span(style="color: green; visibility:hidden")#passwordsMatch  
+            i.icon.check 
+            | Passwords Match
+      button.ui.large.button.disabled(type='submit') Change Password
+
+block scripts
+  script(src='/public/js/profile.js')
+
+=== views/account/forgot.pug ===
+extends ../ui_layout
+
+block content
+  .twelve.wide.computer.tablet.sixteen.wide.mobile.column(style="margin-top: 2em; margin-bottom: 2em;")
+    h2(style="text-align: center;") Forgot Your Password?
+    p(style="font-size:large;") 
+      b Send a message via the survey platform to the study coordinator OR send an email to 
+      a(href="mailto:"+email target="_blank") !{email}
+      |.
+    p(style="font-size:large;") We will get back to you as soon as possible with a temporary password.
+
+=== views/partials/ui_header.pug ===
+.computer.only.tablet.only.row 
+  .ui.borderless.fixed.menu
+    .ui.container
+      a.item(href= user===undefined ? '/' : (user.consent ? "/": "#"))
+        img.ui.tiny.image(src=process.env.SITE_LOGO, id='logo')
+      .right.menu
+        if !user
+          a.item(href='/login') Log In
+          a.item(href='/signup') Create Account
+        else
+          if user.consent
+            if(showNewPostIcon)
+              a.item.newpost
+                i.big.write.square.icon
+            a.item(href='/notifications') 
+              i.big.alarm.icon
+          .ui.simple.dropdown.item
+            if user.profile.picture
+              img.ui.mini.spaced.circular.image(src='/user_avatar/'+user.profile.picture)
+            else
+              img.ui.mini.spaced.circular.image(src=user.gravatar(60))
+            |
+            span(style="margin-right: 5px;")= user.profile.name || user.username || user.id
+            i.dropdown.icon
+            .left.menu
+              if user.consent
+                a.item(href='/me') My Profile
+                a.item(href='/account') Update My Profile
+                if user.isAdmin
+                  a.item(href='/completed') Study Progress
+                  a.item(href='/actors') Simulation (Actors)
+                a.item(href='/com') View Community Rules
+              a.item.logoutLink Log Out
+.mobile.only.row
+  .ui.fluid.top.fixed.four.item.menu
+    a.item(href=user===undefined ? '/' : (user.consent ? "/": "#"))
+      img.ui.tiny.image(src=process.env.SITE_LOGO, id='mobile_logo')
+    if !user
+      a.item(href='/login') Log In
+      a.item(href='/signup') Create Account
+    else
+      if user.consent
+        if(showNewPostIcon)
+          a.item.newpost
+            i.big.write.square.icon
+        a.item(href='/notifications') 
+          i.big.alarm.icon
+      else 
+        .item 
+        .item
+      .ui.simple.dropdown.item
+        if user.profile.picture
+          img.ui.mini.spaced.circular.image(src='/user_avatar/'+user.profile.picture)
+        else
+          img.ui.mini.spaced.circular.image(src=user.gravatar(60))
+        i.dropdown.icon
+        .left.menu
+          if user.consent
+            a.item(href='/me') My Profile
+            a.item(href='/account') Update My Profile
+            if user.isAdmin
+              a.item(href='/completed') Study Progress
+              a.item(href='/actors') Simulation (Actors)
+            a.item(href='/com') View Community Rules
+          a.item.logoutLink Log Out
+
+=== views/partials/actorPost.pug ===
+.ui.fluid.card.dim(postClass=val.class, postID=val.id, type='actor', actor_un = val.actor.username, actor_name = val.actor.profile.name, actor_pic = val.actor.profile.picture)
+  //- dimmer DIV for flagging
+  .ui.dimmer.flag
+    .content
+      .center
+        h2.ui.inverted.icon.header
+          i.red.flag.icon
+          |  You've flagged this!
+          h3.ui.inverted.header
+            span="The admins will review this post further. We are sorry you had this experience."
+  .content
+    .right.floated.time.meta= (user.createdAt.getTime() + val.time)
+    a(href='/user/'+val.actor.username)     
+      img.ui.avatar.image(src='/public/picture.svg', data-src=cdn+"/profile_pictures/"+val.actor.profile.picture)
+      span=val.actor.profile.name
+  .img.post.image
+    img(src='/public/picture.svg', data-src=cdn+"/post_pictures/"+val.picture, style="max-width:100%; width:100%;")
+  .content
+    .description=val.body
+    .myTimer.hidden 0
+  .ui.bottom.three.attached.icon.buttons
+    .ui.reply.button(tabindex='0')
+      i.reply.icon
+      |  Reply
+    .ui.flag.button(tabindex='0')
+      i.flag.icon
+      |  Flag
+    .ui.labeled.button(tabindex='0')
+      .ui.like.button(class=val.like? "red": null)
+        i.heart.icon
+        |  Like
+      a.ui.basic.red.left.pointing.label.count=val.likes
+  if val.comments.length > 0
+    .content
+      .ui.comments
+        each comment in val.comments
+          //- Comment is user-made
+          if comment.new_comment
+            .comment(commentID=comment.commentID)
+              a.avatar.image(href='/me')
+                if user.profile.picture
+                  img(src='/user_avatar/'+user.profile.picture)
+                else
+                  img(src=user.gravatar(60))
+              .content
+                a.author(href='/me')=user.profile.name || user.username || user.id
+                .metadata
+                  span.date=(user.createdAt.getTime() + comment.time)
+                  .rating
+                    i.heart.icon(class=comment.liked ? "red" : null)
+                    span.num=comment.likes+(comment.liked ? 1 : 0)
+                    |  Likes
+                .text=comment.body
+                .actions
+                  a.like.comment(class=comment.liked ? "red" : null ) !{comment.liked ? "Unlike" : "Like"}
+          //- Else this is a normal comment from the script
+          else
+            .comment(commentID=comment.id)
+              a.avatar(href='/user/'+comment.actor.username)                     
+                img(src='/public/picture.svg', data-src=cdn+"/profile_pictures/"+comment.actor.profile.picture)
+              .content
+                a.author(href='/user/'+comment.actor.username)=comment.actor.profile.name
+                .metadata
+                  span.date=(user.createdAt.getTime() + comment.time)
+                  .rating
+                    i.heart.icon(class=comment.liked ? "red" : null)
+                    span.num=comment.likes+(comment.liked ? 1 : 0)
+                    |  Likes
+                .text=comment.body
+                .actions
+                  a.like.comment(class=comment.liked ? "red" : null ) !{comment.liked ? "Unlike" : "Like"}
+                  a.flag.comment Flag
+  .extra.content
+    .ui.fluid.left.labeled.right.icon.input
+      .ui.label
+        if user.profile.picture
+          img.ui.avatar.image.small(src='/user_avatar/'+user.profile.picture, name=user.profile.name || user.username || user.id)
+        else
+          img.ui.avatar.image.small(src=user.gravatar(60), name=user.profile.name || user.username || user.id)            
+      .ui.form
+        .field 
+          textarea.newcomment(type='text', placeholder='Write a Comment' rows='1')
+      i.big.send.link.icon
+
+=== views/partials/userPost.pug ===
+.ui.fluid.card(u_postID=val.id, type='userPost', postID=val.postID)
+  .content
+    .right.floated.time.meta=(val.absTime.getTime())
+    a.ui.avatar.image(href='/me')
+      if user.profile.picture
+        img(src='/user_avatar/'+user.profile.picture)
+      else
+        img(src=user.gravatar(60))
+    a(href='/me')
+      span=user.profile.name || user.username || user.id
+  .image
+    img(src='/user_post/'+val.picture)
+  .content
+    .description=val.body
+  .two.ui.bottom.attached.icon.buttons
+    .ui.reply.button(tabindex='0')
+      i.reply.icon
+      |  Reply
+    .ui.labeled.button(tabindex='0')
+      .ui.like.button(class=val.liked ? "red" : null)
+        i.heart.icon
+        |  Like
+      a.ui.basic.red.left.pointing.label.count=val.likes+(val.liked ? 1 : 0)      
+  if val.comments.length > 0
+    .content
+      .ui.comments
+        each comment in val.comments
+          if !comment.flagged
+            //-IF this comment is USER made, do this
+            if comment.new_comment
+              .comment(commentID=comment.commentID)
+                a.avatar.image(href='/me')
+                  if user.profile.picture
+                    img(src='/user_avatar/'+user.profile.picture)
+                  else
+                    img(src=user.gravatar(60))
+                .content
+                  a.author(href='/me')=user.profile.name || user.username || user.id
+                  .metadata
+                    span.date=(comment.absTime.getTime())
+                    .rating
+                      i.heart.icon(class=comment.liked ? "red" : null)
+                      span.num=comment.likes+(comment.liked ? 1 : 0)
+                      |  Likes
+                  .text=comment.body
+                  .actions
+                    a.like.comment(class=comment.liked ? "red" : null) !{comment.liked ? "Unlike" : "Like"}
+            //- Else this is a normal comment from the script
+            else
+              .comment(commentID=comment.commentID)
+                a.avatar(href='/user/'+comment.actor.username)
+                  img(src='/public/picture.svg', data-src=cdn+"/profile_pictures/"+comment.actor.profile.picture)
+                .content
+                  a.author(href='/user/'+comment.actor.username)=comment.actor.profile.name
+                  .metadata
+                    span.date=(comment.absTime.getTime())
+                    .rating
+                      i.heart.icon(class=comment.liked ? "red" : null)
+                      span.num=comment.likes+(comment.liked ? 1 : 0)
+                      |  Likes
+                  .text=comment.body
+                  .actions
+                    a.like.comment(class=comment.liked ? "red" : null) !{comment.liked ? "Unlike" : "Like"}
+                    a.flag.comment Flag
+  .extra.content
+    .ui.fluid.left.labeled.right.icon.input
+      .ui.label
+        if user.profile.picture
+          img.ui.avatar.image.small(src='/user_avatar/'+user.profile.picture, name=user.profile.name || user.username || user.id)
+        else
+          img.ui.avatar.image.small(src=user.gravatar(60), name=user.profile.name || user.username || user.id)            
+      .ui.form
+        .field 
+          textarea.newcomment(type='text', placeholder='Write a Comment' rows='1')
+      i.big.send.link.icon
+
+=== views/partials/userCard.pug ===
+.ui.card
+  .image
+    if user.profile.picture
+      img(src='/user_avatar/'+user.profile.picture)
+    else
+      img(src=user.gravatar(60))
+  .content
+    a.header(href='/me')= user.profile.name || user.email || user.id
+    .meta="@"+user.username
+    .description(style='white-space: pre-wrap')=user.profile.bio
+    if user.profile.location
+      .description(style="margin-top: 5px;")
+        i.marker.icon
+        span=user.profile.location
+  .one.ui.bottom.attached.icon.buttons
+    button.ui.editprofile.button(data-tooltip='Update My Profile', data-position='bottom left')
+      i.write.icon
+
+script.
+  //Edit button
+  $('.ui.editprofile.button').on('click', function() {
+      window.location.href = '/account';
+  });
+
+=== views/partials/ui_flash.pug ===
+if messages.errors
+  .sixteen.wide.column
+    .ui.negative.message
+      i.close.icon
+      for error in messages.errors
+        div= error.msg
+if messages.info
+  .sixteen.wide.column
+    .ui.warning.message
+      i.close.icon
+      for info in messages.info
+        div= info.msg
+if messages.success
+  .sixteen.wide.column
+    .ui.positive.message
+      i.close.icon
+      for success in messages.success
+        div= success.msg
+if messages.final
+  .sixteen.wide.column
+    .ui.icon.info.message
+      i.trophy.icon
+      .content
+        .header
+          | Thank you for participating in our study!
+        ul.list
+          li The study is now over and your account has been disabled.
+          if messages.final[0].msg
+            li If you haven't yet already, please complete the end survey 
+              a(href=messages.final[0].msg) here.
