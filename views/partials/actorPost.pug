@@ -82,8 +82,11 @@
         if user.profile.picture
           img.ui.avatar.image.small(src='/user_avatar/'+user.profile.picture, name=user.profile.name || user.username || user.id)
         else
-          img.ui.avatar.image.small(src=user.gravatar(60), name=user.profile.name || user.username || user.id)            
+          img.ui.avatar.image.small(src=user.gravatar(60), name=user.profile.name || user.username || user.id)
       .ui.form
         .field 
           textarea.newcomment(type='text', placeholder='Write a Comment' rows='1')
       i.big.send.link.icon
+    .extra.content
+      .ui.segment
+        p How is #{val.actor.profile.name} feeling?

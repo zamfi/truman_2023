@@ -1,0 +1,244 @@
+[
+  {
+    "file_name": "config/passport.js",
+    "description": "This file sets up user authentication in the application using Passport.js. It uses a Local Strategy to authenticate users with an email and password. It also sets up middleware that is used to protect certain routes (defined in app.js) that require authentication."
+  },
+  {
+    "file_name": "controllers/actors.js",
+    "description": "This file is a controller file that manages functionalities related to actors, including viewing a directory of all the actors, viewing a specific actor's profile page, and handling user interactions with an actor (including: blocking, unblocking, reporting, following, and unfollowing)."
+  },
+  {
+    "file_name": "controllers/helpers.js",
+    "description": "This file contains the helper function .getFeed(), which is used in other controller files. This function processes and generates a final feed of posts to render for the user based on provided function parameters."
+  },
+  {
+    "file_name": "controllers/notification.js",
+    "description": "This file is a controller file that manages functionalities related to notifications, including displaying notifications."
+  },
+  {
+    "file_name": "controllers/script.js",
+    "description": "This file is a controller file that manages functionalities related to the newsfeed and posts, including rendering the social media newsfeed, adding a new user post to the newsfeed, and liking, unliking, flagging, and making posts and comments."
+  },
+  {
+    "file_name": "controllers/user.js",
+    "description": "This file is a controller file that manages all other functionalities related to the user (that aren't related to the newsfeed and posts), including logging in, logging out, signing up, updating a user's profile or consent response, logging the pages a user visits and how long they are on the application, and deactivating a user."
+  },
+  {
+    "file_name": "models/Actor.js",
+    "description": "This file defines the mongoose schema and model for an Actor. Actors are simulated users on the website that a user believes are real."
+  },
+  {
+    "file_name": "models/Notification.js",
+    "description": "This file defines the mongoose schema and model for a Notification. Notifications are simulated responses/actions by an actor to a user's post or comment on the application."
+  },
+  {
+    "file_name": "models/Script.js",
+    "description": "This file defines the mongoose schema and model for a Script. A Script is a post on the newsfeed timeline."
+  },
+  {
+    "file_name": "models/User.js",
+    "description": "This file defines the mongoose schema and model for a User. A User is a research participant/user who creates an account and uses this application."
+  },
+  {
+    "file_name": "input/actors.csv",
+    "description": "This csv file defines the simulation actors. The information in this csv is loaded into the database Actors collection via running the populate.js script."
+  },
+  {
+    "file_name": "input/notification(read,like).csv",
+    "description": "This csv file defines the simulated actions of reading and liking by an actor to a user's posts and comments. The information in this csv is loaded into the database Notifications collection via running the populate.js script."
+  },
+  {
+    "file_name": "input/notification(reply).csv",
+    "description": "This csv file defines the simulated action of commenting by an actor to a user's posts. The information in this csv is loaded into the database Notifications collection via running the populate.js script."
+  },
+  {
+    "file_name": "input/posts.csv",
+    "description": "This csv file defines the simulation posts. The information in this csv is loaded into the database Scripts collection via running the populate.js script."
+  },
+  {
+    "file_name": "input/replies.csv",
+    "description": "This csv file defines the simulation comments on posts. The information in this csv is loaded into the database Scripts collection via running the populate.js script."
+  },
+  {
+    "file_name": "post_pictures",
+    "description": "This directory contains all the photo files for the simulation posts."
+  },
+  {
+    "file_name": "profile_pictures",
+    "description": "This directory contains all the photo files for the simulation actors' profile photos."
+  },
+  {
+    "file_name": "public/",
+    "description": "This directory contains all the application's static assets (fonts, css, js, img)."
+  },
+  {
+    "file_name": "public/css/notification.css",
+    "description": "This stylesheet contains all the styling for displaying notifications."
+  },
+  {
+    "file_name": "public/css/script.css",
+    "description": "This stylesheet contains all the styling for the social media newsfeed and posts. "
+  },
+  {
+    "file_name": "public/css/ui_layout.css",
+    "description": "This stylesheet contains all the styling for the general web application."
+  },
+  {
+    "file_name": "public/js/actor.js",
+    "description": "This file contains the client-side JavaScript specific to handling functionalities on an actor's “Profile” page. It includes handling blocking, reporting, following an actor."
+  },
+  {
+    "file_name": "public/js/main.js",
+    "description": "This file contains all the client-side JavaScript for the general web application, including recording the user's active time on the website, enabling checkbox and dropdown components, updating notifications, and previewing and lazy loading images."
+  },
+  {
+    "file_name": "public/js/notification.js",
+    "description": "This file contains the client-side JavaScript specific to the notification components and functionalities."
+  },
+  {
+    "file_name": "public/js/postFunctionalities.js",
+    "description": "This file contains the client-side JavaScript specific to posts and interactions with posts only (ex: liking, unliking, flagging, adding posts and comments; displaying humanized time on posts; recording view duration of posts)."
+  },
+  {
+    "file_name": "public/js/profile.js",
+    "description": "This file contains the client-side JavaScript specific to profile forms (on “Sign Up” and “Update Your Profile” pages)."
+  },
+  {
+    "file_name": "public/js/script.js",
+    "description": "This file contains the client-side JavaScript specific to the newsfeed in general, including uploading a new post."
+  },
+  {
+    "file_name": "views/account",
+    "description": "This directory contains all the templates for pages related to a user's/participant's account."
+  },
+  {
+    "file_name": "views/account/forgot.pug",
+    "description": "Template for _Forgot your Password_ page"
+  },
+  {
+    "file_name": "views/account/login.pug",
+    "description": "Template for _Login_ page"
+  },
+  {
+    "file_name": "views/account/profile.pug",
+    "description": "Template for the user's “Update My Profile” page. The user can update their profile photo, email, name, location, bio, and password on this page."
+  },
+  {
+    "file_name": "views/account/signup_info.pug",
+    "description": "Template for _Tell Us a Little More About Yourself_ page, shown initially upon user's sign up"
+  },
+  {
+    "file_name": "views/account/signup.pug",
+    "description": "Template for _Sign_ _Up_ page"
+  },
+  {
+    "file_name": "views/partials",
+    "description": "This directory contains templates of partial components. These components are not complete pages, but rather components of the interface that appear in multiple places. Defining the components in one file then including it when needed with the code \"include <filename>\" reduces code redundancy and maintains consistency across pages."
+  },
+  {
+    "file_name": "views/partials/actorPost.pug",
+    "description": "Partial template for displaying an actor's post."
+  },
+  {
+    "file_name": "views/partials/ui_flash.pug",
+    "description": "Partial template for displaying error, info and success flash notifications."
+  },
+  {
+    "file_name": "views/partials/ui_header.pug",
+    "description": "Partial template for displaying the site header."
+  },
+  {
+    "file_name": "views/partials/userCard.pug",
+    "description": "Partial template for displaying the user's profile card. This is displayed on the left side of the “Newsfeed” page and user's “Profile” page and user's “Notification” page."
+  },
+  {
+    "file_name": "views/partials/userPost.pug",
+    "description": "Partial template for displaying a user's post."
+  },
+  {
+    "file_name": "views/actor.pug",
+    "description": "Template for an actor's “Profile” page. This page displays the actor's profile on the left and their posts on the right."
+  },
+  {
+    "file_name": "views/actors.pug",
+    "description": "Template for the “Actor Directory” page. This page displays all the actors. Only accessible to admin users."
+  },
+  {
+    "file_name": "views/com.pug",
+    "description": "Template for the “Community Rules” page. This page displays the community rules of the application. It is shown during a user's initial sign up process and can be accessed via the header."
+  },
+  {
+    "file_name": "views/completed.pug",
+    "description": "Template for the “Completed” page. This page is displayed after the user is done with the study."
+  },
+  {
+    "file_name": "views/error.pug",
+    "description": "Template for the “Error” page. This page displays 4xx/5xx errors."
+  },
+  {
+    "file_name": "views/info.pug",
+    "description": "Template for the “Welcome” page. This page displays the features of the application. It is shown during a user's initial sign up process."
+  },
+  {
+    "file_name": "views/me.pug",
+    "description": "Template for an user's “Profile” page. This page displays the user's profile on the left and their posts on the right."
+  },
+  {
+    "file_name": "views/notification.pug",
+    "description": "Template for the “Notifications” page. Notifications are displayed on this page."
+  },
+  {
+    "file_name": "views/script.pug",
+    "description": "Template for the “Newsfeed” page. This is the primary page users use. It is a social media timeline that displays all the actor and user posts within the past 24 hours."
+  },
+  {
+    "file_name": "views/test.pug",
+    "description": "Template for the “Test Newsfeed” page. This page is used for testing purposes. "
+  },
+  {
+    "file_name": "views/tos.pug",
+    "description": "Template for the “Terms of Services” page."
+  },
+  {
+    "file_name": "views/ui_layout.pug",
+    "description": "Base template. This template provides the basic structure to all the pages in the application since all templates extend this pug template. It renders the header, flash notifications, and the specified block of content."
+  },
+  {
+    "file_name": ".dockerignore",
+    "description": "Folder and files ignored by docker usage."
+  },
+  {
+    "file_name": ".env.example",
+    "description": "Example template for the .env file. The database URI and other simulation components (such as # of experimental conditions, experimental condition labels, site name, site photo, site logo, etc. are defined)."
+  },
+  {
+    "file_name": ".env",
+    "description": "Environment variables file, where database URI, and other simulation components are defined."
+  },
+  {
+    "file_name": ".gitignore",
+    "description": "Folder and files ignored by git."
+  },
+  {
+    "file_name": "app.js",
+    "description": "The main Node.js application file, where the express server is defined and launched, where the application connects to the MongoDB database, and where all the application routes are defined."
+  },
+  {
+    "file_name": "data-export.js",
+    "description": "JavaScript script that exports basic user information for each user document in the database, into a readable csv file."
+  },
+  {
+    "file_name": "docker-compose.yml",
+    "description": "Docker compose configuration file."
+  },
+  { "file_name": "Dockerfile", "description": "Docker configuration file." },
+  { "file_name": "package.json", "description": "NPM dependencies." },
+  {
+    "file_name": "package-lock.json",
+    "description": "Contains exact versions of NPM dependencies in package.json."
+  },
+  {
+    "file_name": "populate.js",
+    "description": "JavaScript file that populates the database with the csv files in the ./input folder."
+  }
+]
