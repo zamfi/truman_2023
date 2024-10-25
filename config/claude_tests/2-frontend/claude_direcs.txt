@@ -31,3 +31,8 @@ views/partials/actorPost.pug
 views/partials/userPost.pug
 views/partials/userCard.pug
 views/partials/ui_flash.pug
+
+
+Identified:
+views/partials/actorPost.pug
+views/partials/userPost.pug

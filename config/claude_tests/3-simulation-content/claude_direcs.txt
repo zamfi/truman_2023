@@ -31,3 +31,10 @@ views/partials/actorPost.pug
 views/partials/userPost.pug
 views/partials/userCard.pug
 views/partials/ui_flash.pug
+
+
+Identified:
+models/Actor.js
+controllers/actors.js
+- /path/to/profile_photos/unused/unused_photo1.jpg moved to /path/to/profile_photos/unused_photo1.jpg
+- /path/to/profile_photos/unused/unused_photo2.jpg moved to /path/to/profile_photos/unused_photo2.jpg
