@@ -1,29 +1,33 @@
+import os
 import asyncio
 import json
-import logging
-from metagpt.logs import logger  # Keep using the existing logger
+import re
 from metagpt.context import Context
 from fileidentifier import FileIdentifier
 from developer import Developer
 from replacer import Replacer
 
+# Define the user message
 msg = """
-    For each actor post, add a box above the comment box. The box should include a feeling prompt question: “How is Jane Done feeling?” where the name "Jane Doe" is customized by the original poster's name. 
-    """
+Add 5 actors to the simulation with random usernames and profile information. Choose a random file in the directory ./profile_photos/unused
+"""
 
 # Paths to knowledge base and file structure
 KNOWLEDGE_BASE_PATH = "data/knowledge_base.json"
 FILE_STRUC_PATH = "data/file_structure.json"
 FILE_DESC_PATH = "data/file_descriptions.json"
 
-# Configure the logger to output logs to both console and a file
-logging.basicConfig(
-    filename= msg[:6] + '.txt',  # The file to which logs will be written
-    level=logging.INFO,  # Log level set to INFO to capture all important messages
-    format='%(asctime)s - %(levelname)s - %(message)s'  # Log message format
-)
+# Create 'outputs' folder if it doesn't exist
+output_folder = "outputs"
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
+
+# Sanitize the message to create a valid result filename and store it in the 'outputs' folder
+result_filename = re.sub(r'[^a-zA-Z0-9]', '_', msg[:30]) + '_result.txt'
+result_file_path = os.path.join(output_folder, result_filename)
 
 async def run_agents(msg: str):
+    # Load necessary JSON files
     with open(KNOWLEDGE_BASE_PATH, "r") as f:
         knowledge_base = json.load(f)
     with open(FILE_STRUC_PATH, "r") as f:
@@ -32,11 +36,14 @@ async def run_agents(msg: str):
         file_descriptions = json.load(f)
     
     context = Context()
-    
-    # Log the initial user message
-    logger.info(f"User request: {msg}")
 
-    # Run FileIdentifier agent
+    # Prepare a list to compile the results from all agents
+    results = []
+
+    # Append the initial user message
+    results.append(f"User request: {msg}\n")
+
+    # Run FileIdentifier agent and collect its result
     file_identifier = FileIdentifier(
         context=context, 
         msg=msg, 
@@ -45,9 +52,9 @@ async def run_agents(msg: str):
         file_descriptions=file_descriptions
     )
     file_identifier_result = await file_identifier.run(msg)
-    logger.info(f"File Identifier result: {file_identifier_result}")
+    results.append(f"File Identifier result: {file_identifier_result}\n")
 
-    # Run Developer agent
+    # Run Developer agent and collect its result
     developer = Developer(
         context=context, 
         msg=msg, 
@@ -55,16 +62,20 @@ async def run_agents(msg: str):
         file_identifier_result=file_identifier_result
     )
     developer_result = await developer.run(file_identifier_result)
-    logger.info(f"Developer result: {developer_result}")
+    results.append(f"Developer result: {developer_result}\n")
 
-    # Run Replacer agent
+    # Run Replacer agent and collect its result
     replacer = Replacer(context=context, developer_output=developer_result)
     replacer_result = await replacer.run(developer_result)
-    logger.info(f"Replacer result: {replacer_result}")
+    results.append(f"Replacer result: {replacer_result}\n")
+
+    # Write the compiled results to a text file
+    with open(result_file_path, 'w') as f:
+        f.writelines(results)
 
 if __name__ == '__main__':
-    # Define the user message / requirement
-    
-    
     # Run the event loop for agents
     asyncio.run(run_agents(msg))
+
+
+
