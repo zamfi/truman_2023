@@ -1,12 +1,14 @@
 import os
 import json
-from anthropic import Anthropic
+import anthropic as claude
 import argparse
 from files_ignore import ignored_files, ignored_directory
+from dotenv import load_dotenv
 
 # Set up the Anthropic client
-client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-
+load_dotenv()
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
+client = claude.Anthropic(api_key=ANTHROPIC_KEY)
 def list_files_in_directory():
     # Define the list of files and directories to ignore
     files_to_ignore = ignored_files()
@@ -25,7 +27,6 @@ def list_files_in_directory():
                 relative_path = os.path.relpath(os.path.join(root, file), root_dir)
                 direc = relative_path.split('/')[0]
                 if direc not in directory_to_ignore:
-                    print(direc)
                     all_files.append(relative_path)
     
     return all_files
@@ -64,7 +65,7 @@ def identify_necessary_files(file_structure, task):
                     "Here's the file structure of the repository:\n"
                     f"{file_structure}\n\n"
                     f"Task: {task}\n\n"
-                    "Please update the file and code to solve the following task"
+                    "Please identify the necessary files for the task"
                 )
             }
         ]
@@ -74,27 +75,32 @@ def identify_necessary_files(file_structure, task):
 
 def modify_files(file_info, task):
     """Ask Claude to modify the necessary files to achieve the task."""
-    results = {}
-
-    message = client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=2000,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Here's the content of my repository: \n {file_info}"
-                    f"Task: {task}\n\n"
-                    "Please modify the files to achieve the task. Provide the entire updated content."
-                )
-            }
-        ]
-    )
-
-    # Store the updated file content returned by Claude
-    results = message.messages[0]["content"]
-
-    return results
+    try:
+        message = client.messages.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Here's the content of my repository: \n{file_info}\n"
+                        f"Task: {task}\n\n"
+                        "Please modify the necessary files to achieve the task. Return the results in this format:\n"
+                        "Here are all the changes in the repository:\n\n"
+                        "=== /path/to/changed_file1 ===\n"
+                        "[content of changed_file1]\n\n"
+                        "=== /path/to/changed_file2 ===\n"
+                        "[content of changed_file2]\n"
+                        "Continue this format for all modified files."
+                        "Please ensure that the output is properly formatted with code blocks and newlines for clarity."
+                    )
+                }
+            ],
+            model="claude-3-opus-20240229",
+            max_tokens=2000
+        )
+        return message.content
+    except Exception as e:
+        print(f"Error in modify_files: {e}")
+        return None
 
 def split_file_content(content):
     """Splits file content into two halves and saves them."""
@@ -111,6 +117,38 @@ def split_file_content(content):
 
     print("File successfully split into part1.txt and part2.txt")
 
+def pretty_print_output(input_file_path, output_file_path):
+    # Reading the provided text file
+    with open(input_file_path, 'r') as file:
+        content = file.read()
+
+    # Step 1: Clean up the text, removing unnecessary parts
+    cleaned_content = content.replace("TextBlock(text=", "").replace("', type='text')", "").strip()
+
+    # Step 2: Split the content by section headings to retain the structure of the file
+    sections = cleaned_content.split("===")
+
+    # Step 3: Reformatting each section
+    formatted_sections = []
+    for section in sections:
+        section = section.strip()  # Remove leading/trailing whitespace
+        if not section:  # Skip any empty sections
+            continue
+
+        # Example of removing unnecessary characters and ensuring the right format is applied
+        if ".pug" in section:  # Only process pug files
+            section = "=== " + section  # Re-add heading markers
+            formatted_sections.append(section)
+
+    # Step 4: Combine all the formatted sections back together
+    reformatted_content = "\n\n".join(formatted_sections)
+
+    # Saving the reformatted content back into a text file
+    with open(output_file_path, 'w') as file:
+        file.write(reformatted_content)
+
+    return output_file_path
+
 def main(split=False):
     # Get the list of files from the repository
     file_information = list_files_in_directory()
@@ -123,7 +161,7 @@ def main(split=False):
     file_structure = "\n".join(files_data)
 
     # Define your task
-    task = "Add a new endpoint to the backend with the route '/hello' that prints hello"
+    task = "If the user is in the experimental group \"empathy:view\" or \"empathy:none\", then for each post, add a grey box above the comment box. The grey box should include a feeling prompt question: 'How is Jane Doe feeling?' where the name \"Jane Doe\" is customized by the original poster's name."
 
     # Identify the necessary files
     file_structure = "\n\n".join(files_data)
@@ -137,11 +175,15 @@ def main(split=False):
 
     if file_structure:
         updated_files = modify_files(file_structure, task)
+        print("return updated_files")
+        updated_files_str = "\n\n".join(str(item).strip() for item in updated_files)
+        updated_files_pretty = f"Here are all the changes in the repository:\n\n{updated_files_str}"
 
         # Output the updated files and their new contents
-        print(f"=== Updated Repository ===")
-        print(updated_files)
-        print("\n")
+        with open('claude_output.txt', 'w') as file:
+            file.write(updated_files_pretty)
+        print("\nUpdates saved to claude_output.txt")
+        pretty_print_output('claude_output.txt', 'claude_output_pretty.txt')
     else:
         print("No files were identified as necessary for the task.")
 
