@@ -161,7 +161,7 @@ def main(split=False):
     file_structure = "\n".join(files_data)
 
     # Define your task
-    task = "If the user is in the experimental group \"empathy:view\" or \"empathy:none\", then for each post, add a grey box above the comment box. The grey box should include a feeling prompt question: 'How is Jane Doe feeling?' where the name \"Jane Doe\" is customized by the original poster's name."
+    task = 'Add 5 actors to the simulation with random usernames and profile information. Choose a random file in the directory ./profile_photos/unused'
 
     # Identify the necessary files
     file_structure = "\n\n".join(files_data)

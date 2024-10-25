@@ -1,0 +1,116 @@
+
+Here are all the changes in the repository:
+
+=== models/User.js ===
+
+const bcrypt = require('@node-rs/bcrypt');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+dotenv.config({ path: '.env' });
+
+const userSchema = new mongoose.Schema({
+    email: { type: String, unique: true },
+    password: String,
+    username: String,
+    active: { type: Boolean, default: true }, // Indicates if the user is still active
+    isAdmin: { type: Boolean, default: false }, // Indicates if the user is an administrator
+
+    endSurveyLink: String,
+
+    // User activity and post counters
+    numPosts: { type: Number, default: -1 },
+    numComments: { type: Number, default: -1 },
+    numActorReplies: { type: Number, default: -1 },
+    numPostLikes: { type: Number, default: 0 },
+    numCommentLikes: { type: Number, default: 0 },
+
+    lastNotifyVisit: Date, // Last visit to /notifications
+    createdAt: Date, // User creation timestamp
+    consent: { type: Boolean, default: false }, // Consent status
+
+    mturkID: { type: String, unique: true }, // MTurk ID
+
+    // Experiment metadata
+    experimentalCondition: String, // Assigned condition for experiment
+
+    // User interactions with actors
+    blocked: [String], 
+    reported: [String], 
+    followed: [String],
+    blockReportAndFollowLog: [{
+        time: Date, 
+        action: String, 
+        report_issue: String, 
+        actorName: String
+    }],
+
+    study_days: { 
+        type: [Number], 
+        default: Array(parseInt(process.env.NUM_DAYS)).fill(0)
+    },
+
+    // User-made posts
+    posts: [{
+        type: String, 
+        postID: Number, 
+        body: { type: String, default: '', trim: true }, 
+        picture: String, 
+        liked: { type: Boolean, default: false }, 
+        likes: { type: Number, default: 0 },
+        comments: [{
+            actor: { type: mongoose.Schema.ObjectId, ref: 'Actor' }, 
+            body: { type: String, default: '', trim: true },
+            commentID: Number, 
+            relativeTime: Number, 
+            absTime: Date,
+            new_comment: { type: Boolean, default: false },
+            liked: { type: Boolean, default: false },
+            flagged: { type: Boolean, default: false },
+            likes: { type: Number, default: 0 }
+        }],
+        absTime: Date, 
+        relativeTime: { type: Number }
+    }],
+
+    // User activity logs
+    log: [{ time: Date, userAgent: String, ipAddress: String }],
+    pageLog: [{ time: Date, page: String }],
+    pageTimes: {
+        type: [Number],
+        default: Array(parseInt(process.env.NUM_DAYS)).fill(0)
+    },
+
+    // User statistics
+    postStats: {
+        SiteVisits: Number, 
+        GeneralTimeSpent: Number, 
+        GeneralPostNumber: Number,
+        GeneralPostLikes: Number,
+        GeneralCommentLikes: Number,
+        GeneralPostComments: Number
+    },
+
+    // User interactions with actor posts
+    feedAction: [{
+        post: { type: mongoose.Schema.ObjectId, ref: 'Script' },
+        postClass: String,
+        mostRecentTime: Date,
+        rereadTimes: { type: Number, default: 0 },
+        liked: { type: Boolean, default: false },
+        flagged: { type: Boolean, default: false },
+        likeTime: [Date],
+        unlikeTime: [Date],
+        flagTime: [Date],
+        readTime: [Number],
+        comments: [{
+            comment: { type: mongoose.Schema.ObjectId },
+            liked: { type: Boolean, default: false },
+            flagged: { type: Boolean, default: false },
+            likeTime: [Date],
+            unlikeTime: [Date],
+            flagTime: [Date],
+            new_comment: { type: Boolean, default: false }
+        }]
+    }]
+});

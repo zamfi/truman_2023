@@ -1,0 +1,150 @@
+
+Here are all the changes in the repository:
+
+=== models/Actor.js ===
+
+const mongoose = require('mongoose');
+
+const actorSchema = new mongoose.Schema({
+    username: { type: String, unique: true },
+    profile: {
+        name: String,
+        gender: String,
+        age: Number,
+        location: String,
+        bio: String,
+        picture: String
+    },
+    class: String // For experimental use (defines the type of actor)
+}, { timestamps: true });
+
+const Actor = mongoose.model('Actor', actorSchema);
+module.exports = Actor;
+
+
+=== controllers/actors.js ===
+
+const Actor = require('../models/Actor.js');
+const Script = require('../models/Script.js');
+const User = require('../models/User');
+const helpers = require('./helpers');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * GET /actors
+ * Admin users can retrieve all actors from the database and render them.
+ */
+exports.getActors = async(req, res) => {
+    if (!req.user.isAdmin) {
+        res.redirect('/');
+    } else {
+        try {
+            const actors = await Actor.find().exec();
+            res.render('actors', { actors });
+        } catch (err) {
+            next(err);
+        }
+    }
+};
+
+/**
+ * GET /user/:userId
+ * Retrieve the profile and posts of the actor whose username matches 'userId'.
+ */
+exports.getActor = async(req, res, next) => {
+    const time_diff = Date.now() - req.user.createdAt;
+    try {
+        const user = await User.findById(req.user.id).exec();
+        const actor = await Actor.findOne({ username: req.params.userId }).exec();
+        if (!actor) {
+            return next(new Error('Actor not found!'));
+        }
+        const isBlocked = user.blocked.includes(req.params.userId);
+        const isReported = user.reported.includes(req.params.userId);
+        const script_feed = await Script.find({ actor: actor.id, class: { "$in": ["", user.experimentalCondition] } })
+            .where('time').lte(time_diff)
+            .sort('-time')
+            .populate('actor')
+            .populate('comments.actor')
+            .exec();
+
+        const finalfeed = helpers.getFeed([], script_feed, user, 'CHRONOLOGICAL', true, false);
+        await user.save();
+        res.render('actor', { script: finalfeed, actor, isBlocked, isReported, title: actor.profile.name });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /user
+ * Handle requests to block, unblock, report, follow, and unfollow an actor.
+ */
+exports.postBlockReportOrFollow = async(req, res, next) => {
+    const currDate = Date.now();
+    try {
+        const user = await User.findById(req.user.id).exec();
+        // Handle block, unblock, report, follow, and unfollow actions
+        const actionLogs = {
+            block: req.body.blocked,
+            unblock: req.body.unblocked,
+            report: req.body.reported,
+            follow: req.body.followed,
+            unfollow: req.body.unfollowed
+        };
+
+        for (let [action, actorName] of Object.entries(actionLogs)) {
+            if (actorName) {
+                user[`${action}ed`].includes(actorName) || user[`${action}ed`].push(actorName);
+                user.blockReportAndFollowLog.push({ time: currDate, action, actorName, report_issue: req.body.report_issue });
+            }
+        }
+        
+        await user.save();
+        res.send({ result: "success" });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /addActors
+ * Add 5 actors with random usernames and profile information.
+ */
+exports.addActors = async(req, res, next) => {
+    try {
+        const unusedPhotosDir = path.join(__dirname, '../profile_photos/unused');
+        const unusedPhotos = fs.readdirSync(unusedPhotosDir);
+
+        for (let i = 0; i < 5; i++) {
+            const username = Math.random().toString(36).substring(7);
+            const randomPhotoIndex = Math.floor(Math.random() * unusedPhotos.length);
+            const photo = unusedPhotos.splice(randomPhotoIndex, 1)[0];
+            fs.renameSync(path.join(unusedPhotosDir, photo), path.join(__dirname, '../profile_photos', photo));
+
+            const actor = new Actor({
+                username,
+                profile: {
+                    name: faker.name.findName(),
+                    age: Math.floor(Math.random() * 50) + 18,
+                    gender: Math.random() < 0.5 ? 'male' : 'female',
+                    location: faker.address.city(),
+                    bio: faker.lorem.sentence(),
+                    picture: photo
+                }
+            });
+            await actor.save();
+        }
+
+        res.redirect('/actors');
+    } catch (err) {
+        next(err);
+    }
+};
+
+
+=== Profile Photos Update ===
+
+- /path/to/profile_photos/unused/unused_photo1.jpg moved to /path/to/profile_photos/unused_photo1.jpg
+- /path/to/profile_photos/unused/unused_photo2.jpg moved to /path/to/profile_photos/unused_photo2.jpg
