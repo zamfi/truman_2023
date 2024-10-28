@@ -3,7 +3,17 @@ from metagpt.actions import Action
 import json
 
 class FindFile(Action):
+    #TODO: 
     PROMPT_TEMPLATE: str = """
+    ### Knowledge Base:
+    {knowledge_base}
+
+    ### File Structure:
+    {file_structure}
+
+    ### File Descriptions:
+    {file_description}
+
     ### User Request: 
     {msg}
 
@@ -15,14 +25,9 @@ class FindFile(Action):
     5. **Identify Multiple Relevant Files**: Since code changes may affect more than one file, identify all files that could be relevant for the change, including models, controllers, or views as needed.
     6. **Output in JSON format**: Provide the output in the format of a JSON list that includes all relevant file paths. You can select more than one file if necessary.
 
-    ### Knowledge Base:
-    {knowledge_base}
+    It's ok to identify additional irrelevant but very bad to miss files.
 
-    ### File Structure:
-    {file_structure}
-
-    ### File Descriptions:
-    {file_description}
+    
 
     ### Expected Output:
     Provide a JSON file listing the relevant file paths that should be modified. If multiple files are relevant, include them all. Example output:

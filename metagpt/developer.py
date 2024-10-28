@@ -11,10 +11,10 @@ class WriteCode(Action):
     ### Knowledge Base:
     {knowledge_base}
 
-    ### Files to change (full content):
-    {file_contents}
+    ### File to change (full content):
+    {file_content}
 
-    Based on the user request and the current state of the files provided above, find the specific sections where the changes should be made. Only modify the parts that relate to the user request.
+    Based on the user request and the current state of the file provided above, find the specific sections where the changes should be made. Only modify the parts that relate to the user request.
 
     The output should be a JSON dictionary where:
     - The key is the file path,
@@ -25,8 +25,7 @@ class WriteCode(Action):
     Example output:
     ```json
     {{
-        "path/to/file1.pug": "updated content for file1.pug",
-        "path/to/file2.pug": "updated content for file2.pug"
+        "{file_path}": "updated content for {file_path}"
     }}
     ```
 
@@ -51,40 +50,49 @@ class WriteCode(Action):
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format in the extracted string.")
         
-        # Step 3: Read the content of each file based on the parsed list
-        files_content = self.read_files(file_paths)
+        # Step 3: Initialize a results dictionary to store individual file changes
+        results = {}
 
-        # Step 4: Format the prompt with the user request, knowledge base, and file content
-        prompt = self.PROMPT_TEMPLATE.format(
-            msg=msg,
-            knowledge_base=json.dumps(knowledge_base, indent=2),
-            file_contents=json.dumps(files_content, indent=2)  # Format the file contents as JSON for the prompt
-        )
+        # Process each file separately
+        for file_path in file_paths:
+            # Read the content of each file based on the parsed list
+            file_content = self.read_file(file_path)
 
-        # Step 5: Ask the AI to generate the code changes
-        rsp = await self._aask(prompt)
+            # Step 4: Format the prompt for each file
+            prompt = self.PROMPT_TEMPLATE.format(
+                msg=msg,
+                knowledge_base=json.dumps(knowledge_base, indent=2),
+                file_content=json.dumps(file_content, indent=2),  # Format as JSON
+                file_path=file_path
+            )
 
-        return rsp  # Return the dictionary with file paths and their updated content
+            rsp = await self._aask(prompt)
 
-    def read_files(self, file_paths: list) -> dict:
+            # Check if `rsp` is not empty or null
+            if rsp is None or rsp.strip() == "":
+                raise ValueError(f"Empty response from LLM for file {file_path}. Check prompt and LLM connection.")
+
+            try:
+                # Store the response in the results dictionary with the file path as the key
+                results[file_path] = rsp  # Parse the response as JSON and add to results
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to decode LLM response as JSON for file {file_path}: {rsp}")
+
+        return json.dumps(results, indent=2)  # Return the dictionary with file paths and their updated content
+
+    def read_file(self, file_path: str) -> str:
         """
-        Read the content of the specified files from the list of file paths.
-        Return them as a dictionary where the key is the file path, and the value is the file content.
+        Read the content of the specified file path.
+        Return the file content as a string.
         """
-        files_data = {}
-        for path in file_paths:
-            full_path = '/Users/jessiejia/24FA/truman_2023/' + path  # Prepend base path
+        full_path = '/Users/jessiejia/24FA/truman_2023/' + file_path  # Prepend base path
 
-            # Check if the file exists before trying to read it
-            if os.path.exists(full_path):
-                with open(full_path, 'r') as file:
-                    content = file.read()
-                    files_data[path] = content  # Use path as key and content as value
-            else:
-                files_data[path] = f"(File not found: {path})"  # Store file not found message in dictionary
-
-        # Return the dictionary of file contents
-        return files_data
+        # Check if the file exists before trying to read it
+        if os.path.exists(full_path):
+            with open(full_path, 'r') as file:
+                return file.read()
+        else:
+            return f"(File not found: {file_path})"
 
 
 from metagpt.roles import Role
