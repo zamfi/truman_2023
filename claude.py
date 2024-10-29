@@ -53,25 +53,32 @@ def pull_file_contents(files):
 
     return file_contents
 
-def identify_necessary_files(file_structure, task):
+def identify_necessary_files(file_info, task):
     """Ask Claude to identify necessary files for the task."""
-    message = client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=1000,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "Here's the file structure of the repository:\n"
-                    f"{file_structure}\n\n"
-                    f"Task: {task}\n\n"
-                    "Please identify the necessary files for the task"
-                )
-            }
-        ]
-    )
-    # Extract and return the JSON response containing necessary file paths
-    return json.loads(message.messages[0]["content"])
+    try:
+        message = client.messages.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Here's the content of my repository: \n{file_info}\n"
+                        f"Here's a task: {task}\n\n"
+                        "Please identify the necessary files for the task"
+                        "Return only the necessary files in a comma seperated format. Here is an example of the format: "
+                        "'file1.py,file2.js,file3.pug' "
+                        "Return only this format, nothing else"
+                    )
+                }
+            ],
+            model="claude-3-opus-20240229",
+            max_tokens=2000
+        )
+        return message.content
+    except Exception as e:
+        print(f"Error in modify_files: {e}")
+        return None
+    
+
 
 def modify_files(file_info, task):
     """Ask Claude to modify the necessary files to achieve the task."""
@@ -149,7 +156,7 @@ def pretty_print_output(input_file_path, output_file_path):
 
     return output_file_path
 
-def main(split=False):
+def main(split=False, claude_filter=False):
     # Get the list of files from the repository
     file_information = list_files_in_directory()
     with open('claude_direcs.txt', 'w') as file:
@@ -164,11 +171,23 @@ def main(split=False):
     task = 'Add 5 actors to the simulation with random usernames and profile information. Choose a random file in the directory ./profile_photos/unused'
 
     # Identify the necessary files
-    file_structure = "\n\n".join(files_data)
+    full_file_structure = "\n\n".join(files_data)
+
+
+    if claude_filter:
+        detected_files = identify_necessary_files(full_file_structure, task)[0].text
+        claude_file_list = detected_files.split(',')
+
+        files_data = pull_file_contents(claude_file_list)
+        file_structure = "\n\n".join(files_data)
+    else:
+        file_structure = full_file_structure
 
     if split:
         split_file_content(file_structure)
     else:
+        with open('claude_full_file_structure.txt', 'w') as file:
+            file.write(full_file_structure)
         with open('claude_input.txt', 'w') as file:
             # Write the string to the file
             file.write(file_structure)
@@ -176,14 +195,13 @@ def main(split=False):
     if file_structure:
         updated_files = modify_files(file_structure, task)
         print("return updated_files")
-        updated_files_str = "\n\n".join(str(item).strip() for item in updated_files)
-        updated_files_pretty = f"Here are all the changes in the repository:\n\n{updated_files_str}"
+        updated_files_str = "\n\n".join(item.text for item in updated_files) 
+        # updated_files_pretty = f"Here are all the changes in the repository:\n\n{updated_files_str}"
 
         # Output the updated files and their new contents
         with open('claude_output.txt', 'w') as file:
-            file.write(updated_files_pretty)
+            file.write(updated_files_str)
         print("\nUpdates saved to claude_output.txt")
-        pretty_print_output('claude_output.txt', 'claude_output_pretty.txt')
     else:
         print("No files were identified as necessary for the task.")
 
@@ -196,8 +214,15 @@ if __name__ == "__main__":
         default=False, 
         help="Option to split the file content into two parts. Default is 'false'. Use 'true' to enable splitting."
     )
+    parser.add_argument(
+    "--claude_filter", 
+    type=bool, 
+    default=False, 
+    help="Option to have Claude filter the files. Default is 'false'. Use 'true' to enable the filter."
+    )
+
 
     args = parser.parse_args()
 
     # Call the main function with the split argument
-    main(split=args.split)
+    main(split=args.split, claude_filter=args.claude_filter)
