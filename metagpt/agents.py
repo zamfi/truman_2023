@@ -9,7 +9,7 @@ from replacer import Replacer
 
 # Define the user message
 msg = """
-If the user is in the experimental group "empathy:view" or "empathy:none", then for each post, add a grey box above the comment box. The grey box should include a feeling prompt question: 'How is Jane Doe feeling?' where the name "Jane Doe" is customized by the original poster's name.
+Add 5 actors to the simulation with random usernames and profile information. Choose a random file in the directory ./profile_photos/unused
 """
 
 # Paths to knowledge base and file structure
@@ -72,9 +72,9 @@ async def run_agents(msg: str):
     results.append(f"Developer result: {developer_result}\n")
 
     # Run Replacer agent and collect its result
-    replacer = Replacer(context=context, developer_output=developer_result)
-    replacer_result = await replacer.run(developer_result)
-    results.append(f"Replacer result: {replacer_result}\n")
+    # replacer = Replacer(context=context, developer_output=developer_result)
+    # replacer_result = await replacer.run(developer_result)
+    # results.append(f"Replacer result: {replacer_result}\n")
 
     # Write the compiled results to a text file
     with open(result_file_path, 'w') as f:
